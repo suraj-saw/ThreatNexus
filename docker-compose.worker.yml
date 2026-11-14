@@ -67,8 +67,8 @@ services:
         done;
         exec /usr/local/hbase/bin/hbase-daemon.sh --config /usr/local/hbase/conf foreground_start regionserver
     ports:
-      - "${REGIONSERVER_PORT:-16020}:16020"
-      - "${REGIONSERVER_INFO_PORT:-16030}:16030"
+      - "${REGIONSERVER_PORT:-${HBASE_RS_PORT:-16020}}:16020"
+      - "${REGIONSERVER_INFO_PORT:-${HBASE_RS_INFO_PORT:-16030}}:16030"
     volumes:
       - ./config/hbase/hbase-site.xml:/usr/local/hbase/conf/hbase-site.xml:ro
       - ./config/hbase/core-site.xml:/usr/local/hbase/conf/core-site.xml:ro
