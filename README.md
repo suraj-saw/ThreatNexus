@@ -111,8 +111,8 @@ The working system components and visual dashboards are shown below:
 | **4. One-Click Attack Simulator** | Interactive simulator to trigger SSH brute force, TCP port sweeps, and suspicious processes directly from UI. | ![Attack Simulator](docs/screenshots/One_Click_Attack_Simulator.jpeg) |
 | **5. HDFS NameNode Web UI** | Proves distributed fault-tolerant storage showing `Live datanodes (2)` (`worker1-datanode`, `worker2-datanode`). | ![HDFS UI](docs/screenshots/HDFS_Namenode_Web_UI.jpeg) |
 | **6. Spark Master Web UI** | Spark cluster manager showing registered worker nodes (`worker1-spark`, `worker2-spark`) and streaming execution. | ![Spark UI](docs/screenshots/Spark_Master_Web_UI.jpeg) |
-| **7. HBase Master Web UI** | Distributed NoSQL status showing 2 live RegionServers and initialized `threatnexus:*` schema tables. | ![HBase UI](docs/screenshots/HBase_Master_Web_UI.jpeg) |
-| **8. Automated Verification Suite** | Complete Phase 10 test suite passing **11/11 automated end-to-end test cases (100% pass rate)**. | ![Test Verification](docs/screenshots/Automated_verification_Suite.jpeg) |
+| **7. HBase Master Web UI** | Distributed NoSQL status showing 2 live RegionServers and initialized `threatnexus:*` schema tables. | ![HBase UI](docs/screenshots/HBASE_Master_Web_UI.jpeg) |
+| **8. Automated Verification Suite** | Complete Phase 10 test suite passing **11/11 automated end-to-end test cases (100% pass rate)**. | ![Test Verification](docs/screenshots/Automated_Verification_Suite.jpeg) |
 
 *(Full-resolution screenshots are stored in [docs/screenshots/](docs/screenshots/README.md).)*
 
