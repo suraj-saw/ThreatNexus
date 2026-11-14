@@ -1,0 +1,86 @@
+# ==========================================================
+# ThreatNexus - Worker PC Docker Compose Deployment
+# Implements Phase 8 & 9: Worker 1, Worker 2, and expansion nodes
+# Run on each Worker machine (Worker 1, Worker 2, Worker 3...)
+# ==========================================================
+
+services:
+  # ---------------- HADOOP DATANODE ----------------
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: ${WORKER_HOSTNAME:-worker1}-datanode
+    environment:
+      CORE_CONF_fs_defaultFS: hdfs://${NAMENODE_HOST:-namenode}:9000
+      SERVICE_PRECONDITION: "${NAMENODE_HOST:-namenode}:9870"
+      HDFS_CONF_dfs_datanode_data_dir: file:///hadoop/dfs/data
+      HDFS_CONF_dfs_datanode_use_datanode_hostname: "true"
+      HDFS_CONF_dfs_datanode_hostname: ${WORKER_HOSTNAME:-worker1}-datanode
+    ports:
+      - "${DATANODE_HTTP_PORT:-9864}:9864"
+      - "${DATANODE_DATA_PORT:-9866}:9866"
+    volumes:
+      - hdfs_worker_data:/hadoop/dfs/data
+    networks:
+      threatnexus-net:
+        aliases:
+          - ${WORKER_HOSTNAME:-worker1}-datanode
+    restart: unless-stopped
+
+  # ---------------- SPARK WORKER ----------------
+  spark-worker:
+    build:
+      context: ./spark
+    hostname: ${WORKER_HOSTNAME:-worker1}-spark
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://${SPARK_MASTER_HOST:-spark-master}:7077
+      SPARK_LOCAL_HOSTNAME: ${WORKER_HOSTNAME:-worker1}-spark
+      SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY:-2G}
+      SPARK_WORKER_CORES: ${SPARK_WORKER_CORES:-2}
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
+      SPARK_SSL_ENABLED: "no"
+    ports:
+      - "${SPARK_WORKER_UI_PORT:-8081}:8081"
+    networks:
+      threatnexus-net:
+        aliases:
+          - ${WORKER_HOSTNAME:-worker1}-spark
+    restart: unless-stopped
+
+  # ---------------- HBASE REGIONSERVER ----------------
+  hbase-regionserver:
+    image: openeuler/hbase:2.6.5-oe2403sp3
+    hostname: ${WORKER_HOSTNAME:-worker1}-regionserver
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - >-
+        export PATH="/tmp:/usr/local/bin:/usr/bin:/bin:/usr/local/hbase/bin";
+        printf '%s\n' '#!/bin/sh' 'echo "$${HOSTNAME}"' > /tmp/hostname;
+        chmod +x /tmp/hostname;
+        until /bin/bash -c ": </dev/tcp/${NAMENODE_HOST:-namenode}/9000" && /bin/bash -c ": </dev/tcp/${ZOOKEEPER_HOST:-zookeeper}/2181" && /bin/bash -c ": </dev/tcp/${HBASE_MASTER_HOST:-hbase-master}/16000";
+        do /bin/sleep 3;
+        done;
+        exec /usr/local/hbase/bin/hbase-daemon.sh --config /usr/local/hbase/conf foreground_start regionserver
+    ports:
+      - "${REGIONSERVER_PORT:-16020}:16020"
+      - "${REGIONSERVER_INFO_PORT:-16030}:16030"
+    volumes:
+      - ./config/hbase/hbase-site.xml:/usr/local/hbase/conf/hbase-site.xml:ro
+      - ./config/hbase/core-site.xml:/usr/local/hbase/conf/core-site.xml:ro
+      - ./config/hbase/hdfs-site.xml:/usr/local/hbase/conf/hdfs-site.xml:ro
+      - ./config/hbase/hbase-env.sh:/usr/local/hbase/conf/hbase-env.sh:ro
+    networks:
+      threatnexus-net:
+        aliases:
+          - ${WORKER_HOSTNAME:-worker1}-regionserver
+    restart: unless-stopped
+
+volumes:
+  hdfs_worker_data:
+
+networks:
+  threatnexus-net:
+    external: true
+    name: threatnexus-net

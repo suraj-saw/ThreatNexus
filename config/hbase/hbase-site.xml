@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+
+    <!-- Enable distributed HBase -->
+    <property>
+        <name>hbase.cluster.distributed</name>
+        <value>true</value>
+    </property>
+
+    <!-- HBase storage on HDFS -->
+    <property>
+        <name>hbase.rootdir</name>
+        <value>hdfs://namenode:9000/hbase</value>
+    </property>
+
+    <!-- ZooKeeper configuration -->
+    <property>
+        <name>hbase.zookeeper.quorum</name>
+        <value>zookeeper</value>
+    </property>
+
+    <property>
+        <name>hbase.zookeeper.property.clientPort</name>
+        <value>2181</value>
+    </property>
+
+    <!-- HBase ports -->
+    <property>
+        <name>hbase.master.port</name>
+        <value>16000</value>
+    </property>
+
+    <property>
+        <name>hbase.regionserver.port</name>
+        <value>16020</value>
+    </property>
+
+    <property>
+        <name>hbase.master.info.port</name>
+        <value>16010</value>
+    </property>
+
+    <!-- RegionServer hostname -->
+    <property>
+        <name>hbase.unsafe.regionserver.hostname.disable.master.reversedns</name>
+        <value>true</value>
+    </property>
+
+    <!-- HDFS stream capability -->
+    <property>
+        <name>hbase.unsafe.stream.capability.enforce</name>
+        <value>true</value>
+    </property>
+
+</configuration>

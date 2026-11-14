@@ -1,0 +1,249 @@
+# ==========================================================
+# ThreatNexus - Master PC Docker Compose Deployment
+# Implements Phase 8: 1 Master + at least 2 Workers
+# Services running on Master:
+# - ZooKeeper, Kafka Broker, HDFS NameNode
+# - HBase Master, HBase Thrift, HBase Table Init
+# - Spark Standalone Master, Spark Streaming Job
+# - FastAPI Backend, React Frontend
+# ==========================================================
+
+services:
+  # ---------------- ZOOKEEPER ----------------
+  zookeeper:
+    image: zookeeper:3.9
+    hostname: zookeeper
+    ports:
+      - "2181:2181"
+    volumes:
+      - zk_data:/data
+      - zk_log:/datalog
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+  # ---------------- KAFKA BROKER ----------------
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    hostname: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${MASTER_IP:-localhost}:9092,DOCKER://kafka:29092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,DOCKER://0.0.0.0:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+  # ---------------- HADOOP NAMENODE ----------------
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    hostname: namenode
+    environment:
+      CLUSTER_NAME: threatnexus
+      MULTIHOMED_NETWORK: "1"
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+      HDFS_CONF_dfs_replication: 2
+      HDFS_CONF_dfs_namenode_name_dir: file:///hadoop/dfs/name
+      HDFS_CONF_dfs_namenode_safemode_extension: 5000
+      HDFS_CONF_dfs_permissions_enabled: "false"
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - hdfs_name:/hadoop/dfs/name
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+  # ---------------- HBASE MASTER ----------------
+  hbase-master:
+    image: openeuler/hbase:2.6.5-oe2403sp3
+    hostname: hbase-master
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - >-
+        export PATH="/tmp:/usr/local/bin:/usr/bin:/bin:/usr/local/hbase/bin";
+        printf '%s\n' '#!/bin/sh' 'echo "$${HOSTNAME:-hbase-master}"' > /tmp/hostname;
+        chmod +x /tmp/hostname;
+        until /bin/bash -c ': </dev/tcp/namenode/9000' && /bin/bash -c ': </dev/tcp/zookeeper/2181';
+        do /bin/sleep 3;
+        done;
+        exec /usr/local/hbase/bin/hbase-daemon.sh --config /usr/local/hbase/conf foreground_start master
+    depends_on:
+      - namenode
+      - zookeeper
+    ports:
+      - "16000:16000"
+      - "16010:16010"
+    volumes:
+      - ./config/hbase/hbase-site.xml:/usr/local/hbase/conf/hbase-site.xml:ro
+      - ./config/hbase/core-site.xml:/usr/local/hbase/conf/core-site.xml:ro
+      - ./config/hbase/hdfs-site.xml:/usr/local/hbase/conf/hdfs-site.xml:ro
+      - ./config/hbase/hbase-env.sh:/usr/local/hbase/conf/hbase-env.sh:ro
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+  # ---------------- HBASE THRIFT ----------------
+  hbase:
+    image: openeuler/hbase:2.6.5-oe2403sp3
+    hostname: hbase
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - >-
+        export PATH="/tmp:/usr/local/bin:/usr/bin:/bin:/usr/local/hbase/bin";
+        printf '%s\n' '#!/bin/sh' 'echo "$${HOSTNAME:-hbase}"' > /tmp/hostname;
+        chmod +x /tmp/hostname;
+        until /bin/bash -c ': </dev/tcp/hbase-master/16000';
+        do /bin/sleep 3;
+        done;
+        exec /usr/local/hbase/bin/hbase thrift start -p 9090
+    depends_on:
+      - hbase-master
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/hbase/hbase-site.xml:/usr/local/hbase/conf/hbase-site.xml:ro
+      - ./config/hbase/core-site.xml:/usr/local/hbase/conf/core-site.xml:ro
+      - ./config/hbase/hdfs-site.xml:/usr/local/hbase/conf/hdfs-site.xml:ro
+      - ./config/hbase/hbase-env.sh:/usr/local/hbase/conf/hbase-env.sh:ro
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+  # ---------------- HBASE INIT TABLES ----------------
+  hbase-init:
+    image: openeuler/hbase:2.6.5-oe2403sp3
+    hostname: hbase-init
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - >-
+        until /bin/bash -c ': </dev/tcp/hbase/9090';
+        do /bin/sleep 3;
+        done;
+        until printf 'status\n' | /usr/local/hbase/bin/hbase shell -n 2>/dev/null | grep -Eq '[1-9][0-9]* (live |active )?servers';
+        do echo '[ThreatNexus] Waiting for HBase Master and RegionServers...'; /bin/sleep 5;
+        done;
+        /opt/threatnexus/hbase/init_tables.sh
+    depends_on:
+      - hbase
+    volumes:
+      - ./hbase:/opt/threatnexus/hbase:ro
+      - ./config/hbase/hbase-site.xml:/usr/local/hbase/conf/hbase-site.xml:ro
+      - ./config/hbase/core-site.xml:/usr/local/hbase/conf/core-site.xml:ro
+      - ./config/hbase/hdfs-site.xml:/usr/local/hbase/conf/hdfs-site.xml:ro
+      - ./config/hbase/hbase-env.sh:/usr/local/hbase/conf/hbase-env.sh:ro
+    networks:
+      - threatnexus-net
+    restart: on-failure
+
+  # ---------------- SPARK MASTER ----------------
+  spark-master:
+    build:
+      context: ./spark
+    hostname: spark-master
+    environment:
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
+      SPARK_SSL_ENABLED: "no"
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    volumes:
+      - ./spark:/opt/threatnexus/spark
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+  # ---------------- SPARK STREAMING ENGINE ----------------
+  spark-streaming:
+    build:
+      context: ./spark
+    hostname: spark-streaming
+    depends_on:
+      - kafka
+      - namenode
+      - hbase-init
+      - spark-master
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: security-events
+      HBASE_HOST: hbase
+      HBASE_THRIFT_PORT: 9090
+      HBASE_TABLE: threatnexus:alerts
+      HDFS_OUTPUT_PATH: hdfs://namenode:9000/threatnexus/events
+      SPARK_CHECKPOINT_BASE: hdfs://namenode:9000/threatnexus/checkpoints
+    volumes:
+      - ./spark:/opt/threatnexus/spark
+    command:
+      - /bin/bash
+      - -c
+      - >-
+        until /opt/bitnami/python/bin/python -c "import happybase,sys; c=happybase.Connection('hbase',9090,timeout=3000); sys.exit(0 if b'threatnexus:alerts' in c.tables() else 1)";
+        do echo "[ThreatNexus] Waiting for HBase tables and HDFS readiness..."; sleep 5;
+        done;
+        exec /opt/bitnami/spark/bin/spark-submit --master spark://spark-master:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3 /opt/threatnexus/spark/stream_processor.py
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+  # ---------------- FASTAPI BACKEND ----------------
+  api:
+    build: ./backend
+    hostname: api
+    depends_on:
+      - kafka
+      - hbase
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: security-events
+      HBASE_HOST: hbase
+      HBASE_THRIFT_PORT: 9090
+      HBASE_TABLE: threatnexus:alerts
+      CORS_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+  # ---------------- REACT FRONTEND ----------------
+  frontend:
+    build: ./frontend
+    hostname: frontend
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://${MASTER_IP:-localhost}:8000
+    networks:
+      - threatnexus-net
+    restart: unless-stopped
+
+volumes:
+  zk_data:
+  zk_log:
+  kafka_data:
+  hdfs_name:
+
+networks:
+  threatnexus-net:
+    name: threatnexus-net
+    driver: bridge
+
