@@ -659,15 +659,14 @@ The following step-by-step walkthrough outlines how to demonstrate and verify th
   python3 scripts/test_pipeline.py --api http://localhost:8000
   ```
   Demonstrates complete end-to-end reliability with all **11/11 tests passing (100%)**.
-  
-  ---
+
+---
   
 ## 15. Team Members & Supervision
 
-**Course:** CSBB 422 – Big Data Analytics / Big Data & Distributed Computing  
+**Course:** CSBB 422 – Big Data Analytics  
 **Institution:** National Institute of Technology Delhi  
 **Department:** Department of Computer Science and Engineering  
-**Academic Term:** November 2026  
 
 ### Project Group: `ThreatNexus`
 
