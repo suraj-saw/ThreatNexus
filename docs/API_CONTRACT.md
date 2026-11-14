@@ -1,6 +1,8 @@
-# ThreatNexus REST API Contract Specification
-Implements Phase 6 (Step 6.1) of the ThreatNexus guide.
-Base URL: `http://localhost:8000` (or `http://<MASTER_IP>:8000`)
+# ThreatNexus REST API Specification
+
+This document details the REST endpoints provided by the ThreatNexus FastAPI backend for event ingestion, alert queries, metrics aggregation, and cluster health monitoring.
+
+Base URL: `http://localhost:8000` (or `http://<MASTER_IP>:8000`)  
 Interactive Documentation: `http://localhost:8000/docs` (Swagger UI)
 
 ---

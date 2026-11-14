@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 ThreatNexus - Dataset Replay & Event Streaming Tool
-Implements Phase 2 (Step 2.4) and Phase 3 of the ThreatNexus guide.
 Reads synthetic scenarios or CIC-IDS2017 CSV flow records, normalizes to
 common schema, validates fields, and streams to Kafka or Backend REST API.
 """

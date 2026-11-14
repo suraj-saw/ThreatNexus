@@ -1,5 +1,6 @@
-# ThreatNexus Cluster Inventory & Expansion Runbook
-Implements Phase 9: Scaling from 2 Workers to 4, 5, or more.
+# ThreatNexus Cluster Inventory & Worker Scaling Guide
+
+This document details the node allocation, network topology, and onboarding procedure for expanding the ThreatNexus cluster beyond 2 workers.
 
 ## 1. Node Inventory
 

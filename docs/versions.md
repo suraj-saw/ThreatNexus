@@ -1,5 +1,6 @@
 # ThreatNexus Technology Version Matrix
-Recorded per Phase 1 (Step 1.2) of the implementation guide.
+
+This matrix records the tested versions and runtime dependencies across the Hadoop, Spark, Kafka, and HBase ecosystem used in ThreatNexus.
 
 All components have been verified for inter-compatibility across the Hadoop, Spark, Kafka, and HBase ecosystem:
 

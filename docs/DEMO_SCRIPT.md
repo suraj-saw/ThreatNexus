@@ -1,7 +1,6 @@
-# ThreatNexus 8-Minute Evaluation Demonstration Script
-Derived from Section 14 & 15 of the Scalable Implementation Guide.
+# ThreatNexus Project Demonstration Walkthrough
 
-This structured walkthrough provides exact talking points, actions, and terminal commands to demonstrate the platform to evaluators within an 8-minute presentation window.
+This guide provides a structured walkthrough with terminal commands, expected outputs, and dashboard checkpoints for presenting the ThreatNexus distributed platform.
 
 ---
 

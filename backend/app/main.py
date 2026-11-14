@@ -7,6 +7,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import List, Optional
 
+
 from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.middleware.cors import CORSMiddleware
 from kafka import KafkaProducer
@@ -45,7 +46,7 @@ producer = None
 
 
 # ==========================================================
-# DATA MODELS (Step 2.3 & Step 4.4 Schemas)
+# DATA MODELS (Event & Alert Schemas)
 # ==========================================================
 class Event(BaseModel):
     event_id: Optional[str] = Field(default=None, description="Unique event identifier")
@@ -150,7 +151,7 @@ def scan_hbase_alerts(limit: int = 100):
 
 
 # ==========================================================
-# API CONTRACT ENDPOINTS (Phase 6, Step 6.1)
+# REST API ENDPOINTS
 # ==========================================================
 
 @app.get("/health")

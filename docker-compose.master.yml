@@ -1,6 +1,5 @@
 # ==========================================================
-# ThreatNexus - Master PC Docker Compose Deployment
-# Implements Phase 8: 1 Master + at least 2 Workers
+# ThreatNexus - Master Node Docker Compose Deployment
 # Services running on Master:
 # - ZooKeeper, Kafka Broker, HDFS NameNode
 # - HBase Master, HBase Thrift, HBase Table Init

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 ThreatNexus - Apache Spark Structured Streaming Threat Detection Engine
-Implements Phase 4 (Detection Rules & Alert Schema) and Phase 5 (HDFS & HBase persistence).
 
 Features:
 - Parses JSON events from Kafka topic 'security-events'.
@@ -34,7 +33,7 @@ spark = (
 spark.sparkContext.setLogLevel("WARN")
 
 # ==========================================================
-# 2. UNIFIED EVENT SCHEMA (Phase 2, Step 2.3)
+# 2. UNIFIED EVENT SCHEMA
 # ==========================================================
 schema = T.StructType([
     T.StructField("event_id", T.StringType(), True),
@@ -53,7 +52,7 @@ schema = T.StructType([
 ])
 
 # ==========================================================
-# 3. KAFKA STREAM INGESTION (Phase 4, Step 4.1)
+# 3. KAFKA STREAM INGESTION
 # ==========================================================
 kafka_broker = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 kafka_topic = os.getenv("KAFKA_TOPIC", "security-events")
@@ -258,7 +257,7 @@ all_alerts = (
 )
 
 # ==========================================================
-# 10. HBASE SINK (Phase 5, Step 5.2 & 5.3)
+# 10. HBASE SINK
 # ==========================================================
 def save_alerts_to_hbase(df, batch_id):
     if df.rdd.isEmpty():
@@ -343,7 +342,7 @@ alert_query = (
 )
 
 # ==========================================================
-# 11. HDFS SINK: RAW & CURATED LOG ARCHIVE (Phase 5, Step 5.1 & 5.3)
+# 11. HDFS SINK: RAW & CURATED LOG ARCHIVE
 # ==========================================================
 # Date-partitioned raw event streaming sink to HDFS
 hdfs_output_dir = os.getenv("HDFS_OUTPUT_PATH", "hdfs://namenode:9000/threatnexus/events")

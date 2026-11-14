@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
 ThreatNexus - Synthetic Security Event Generator
-Implements Phase 2: Datasets and Event Generation (Step 2.3 & 2.4).
-Generates deterministic, schema-compliant security events for baseline traffic
-and specific attack scenarios.
+Generates schema-compliant security events for baseline traffic
+and specific cyber attack scenarios.
 """
 
 import json

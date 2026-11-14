@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 ThreatNexus - Automated Pipeline Verification & Testing Suite
-Implements Phase 10: Verification, Testing and Troubleshooting.
-Executes test cases against running ThreatNexus API, Kafka, Spark, and HBase pipeline.
+Executes end-to-end integration tests against running ThreatNexus API, Kafka, Spark, and HBase.
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -12,33 +13,57 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from typing import Any, Optional, Union
 
 PASS = "\033[92m[PASS]\033[0m"
 FAIL = "\033[91m[FAIL]\033[0m"
 INFO = "\033[94m[INFO]\033[0m"
 
 
-def http_req(url: str, method: str = "GET", data: dict | list = None, timeout: int = 10):
-    body = json.dumps(data).encode("utf-8") if data is not None else None
-    headers = {"Content-Type": "application/json"} if data is not None else {}
+def http_req(
+    url: str,
+    method: str = "GET",
+    data: Optional[Union[dict, list, Any]] = None,
+    timeout: int = 10,
+) -> tuple[int, dict]:
+    """Perform an HTTP request and safely parse the JSON response."""
+    body = None
+    headers = {}
+    if data is not None:
+        body = json.dumps(data).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    elif method.upper() in ("POST", "PUT", "PATCH"):
+        body = b""
+        headers["Content-Length"] = "0"
+
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as res:
-            res_body = res.read().decode("utf-8")
-            return res.status, json.loads(res_body) if res_body else {}
+            res_body = res.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(res_body) if res_body.strip() else {}
+                if not isinstance(parsed, dict):
+                    parsed = {"data": parsed}
+            except Exception:
+                parsed = {"raw": res_body}
+            return res.status, parsed
     except urllib.error.HTTPError as e:
-        res_body = e.read().decode("utf-8")
+        res_body = e.read().decode("utf-8", errors="replace")
         try:
-            return e.code, json.loads(res_body)
+            parsed = json.loads(res_body) if res_body.strip() else {}
+            if not isinstance(parsed, dict):
+                parsed = {"data": parsed}
         except Exception:
-            return e.code, {"error": res_body}
+            parsed = {"error": res_body}
+        return e.code, parsed
     except Exception as e:
         return 0, {"exception": str(e)}
 
 
-def run_tests(api_base: str):
+def run_tests(api_base: str) -> bool:
+    """Execute end-to-end integration tests against ThreatNexus endpoints."""
     print("=" * 65)
-    print(" ThreatNexus End-to-End Pipeline Verification Suite (Phase 10)")
+    print(" ThreatNexus End-to-End Pipeline Verification Suite")
     print(f" Target Endpoint: {api_base}")
     print("=" * 65)
 
@@ -69,10 +94,12 @@ def run_tests(api_base: str):
     # -------------------------------------------------------------
     status, body = http_req(f"{api_base}/api/health")
     deps = body.get("dependencies", {})
+    k_stat = deps.get("kafka", {}).get("status")
+    h_stat = deps.get("hbase", {}).get("status")
     record_test(
         "T2: Dependency Deep Health Check",
         status == 200 and "kafka" in deps and "hbase" in deps,
-        f"(Kafka: {deps.get('kafka', {}).get('status')}, HBase: {deps.get('hbase', {}).get('status')})"
+        f"(Kafka: {k_stat}, HBase: {h_stat})"
     )
 
     # -------------------------------------------------------------
@@ -117,12 +144,12 @@ def run_tests(api_base: str):
     )
 
     # -------------------------------------------------------------
-    # Test 5: Trigger Brute Force Scenario & Verify Alert
+    # Test 5: Trigger Brute Force Scenario
     # -------------------------------------------------------------
     print(f"{INFO} Triggering synthetic Brute Force scenario (7 failed logins)...")
     status, body = http_req(f"{api_base}/api/replay/trigger?scenario=brute_force", method="POST")
     record_test(
-        "T5a: Ingest Brute Force Attack Sequence",
+        "T5: Ingest Brute Force Attack Sequence",
         status in (200, 202) and body.get("accepted") is True,
         f"(Published {body.get('count', 0)} failed-login events)"
     )
@@ -146,17 +173,19 @@ def run_tests(api_base: str):
     record_test(
         "T7: Ingest Suspicious Process Event",
         status in (200, 202) and body.get("accepted") is True,
-        f"(Published critical process execution event)"
+        "(Published critical process execution event)"
     )
 
     # -------------------------------------------------------------
     # Test 8: Metrics Summary Endpoint Contract
     # -------------------------------------------------------------
     status, body = http_req(f"{api_base}/api/metrics/summary")
+    tot_ev = body.get("total_events_ingested")
+    tot_al = body.get("total_alerts")
     record_test(
         "T8: Metrics Summary API Contract Check",
         status == 200 and "total_events_ingested" in body and "alerts_by_severity" in body,
-        f"(Total Events: {body.get('total_events_ingested')}, Total Alerts: {body.get('total_alerts')})"
+        f"(Total Events: {tot_ev}, Total Alerts: {tot_al})"
     )
 
     # -------------------------------------------------------------
@@ -185,21 +214,22 @@ def run_tests(api_base: str):
     status, body = http_req(f"{api_base}/api/events/recent?limit=20")
     record_test(
         "T11: Recent Events Live Stream Buffer",
-        status == 200 and len(body.get("events", [])) > 0,
+        status == 200 and isinstance(body.get("events"), list) and len(body.get("events", [])) > 0,
         f"(Buffer contains {len(body.get('events', []))} events)"
     )
 
+    pct = int(passed_count / total_count * 100) if total_count > 0 else 0
     print("=" * 65)
-    print(f" Test Results: {passed_count}/{total_count} Passed ({int(passed_count / total_count * 100)}%)")
+    print(f" Test Results: {passed_count}/{total_count} Passed ({pct}%)")
     print("=" * 65)
-    return passed_count == total_count
+    return passed_count == total_count and total_count > 0
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ThreatNexus Pipeline Verification Suite")
     parser.add_argument("--api", default="http://localhost:8000", help="ThreatNexus API base URL")
-    args = parser.parse_args()
+    cli_args = parser.parse_args()
 
-    success = run_tests(args.api)
-    sys.exit(0 if success else 1)
+    test_passed = run_tests(cli_args.api)
+    sys.exit(0 if test_passed else 1)
 

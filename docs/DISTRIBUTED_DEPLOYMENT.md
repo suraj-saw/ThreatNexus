@@ -5,7 +5,7 @@
 
 ## 1. Overview & Service Placement
 
-In adherence with the course specifications, ThreatNexus is architected for distributed cluster deployment across physical machines connected over a trusted local area network (LAN), as well as **local multi-terminal cluster simulation on a single PC** using Docker Compose project namespaces and isolated port offsets over a shared bridge network (`threatnexus-net`).
+ThreatNexus is designed for distributed cluster deployment across physical machines connected over a local area network (LAN), as well as **local multi-terminal cluster simulation on a single PC** using Docker Compose project namespaces and isolated port offsets over a shared bridge network (`threatnexus-net`).
 
 ```
                       +---------------------------------------+

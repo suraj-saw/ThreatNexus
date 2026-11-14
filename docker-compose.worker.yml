@@ -1,7 +1,10 @@
 # ==========================================================
-# ThreatNexus - Worker PC Docker Compose Deployment
-# Implements Phase 8 & 9: Worker 1, Worker 2, and expansion nodes
-# Run on each Worker machine (Worker 1, Worker 2, Worker 3...)
+# ThreatNexus - Worker Node Docker Compose Deployment
+# Run on each Worker machine / container (Worker 1, Worker 2, Worker 3...)
+# Services running on each Worker:
+# - Hadoop HDFS DataNode
+# - Apache Spark Worker
+# - Apache HBase RegionServer
 # ==========================================================
 
 services:

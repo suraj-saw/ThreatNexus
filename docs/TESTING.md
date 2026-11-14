@@ -1,5 +1,6 @@
 # ThreatNexus Verification, Testing & Troubleshooting Guide
-Implements Phase 10 of the ThreatNexus guide.
+
+This document outlines the test cases, verification procedures, and troubleshooting guidelines for the ThreatNexus distributed pipeline.
 
 ---
 
