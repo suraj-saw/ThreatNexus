@@ -1,4 +1,4 @@
-# ThreatNexus
+# ThreatNexuss
 ### Distributed Real-Time Cybersecurity Threat Detection & Log Analytics Platform
 
 [![Apache Spark](https://img.shields.io/badge/Apache_Spark-3.5.3-E25A1C?logo=apachespark&logoColor=white)](https://spark.apache.org/)
