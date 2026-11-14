@@ -182,8 +182,10 @@ The working system components and visual dashboards captured during live cluster
 | **4. One-Click Attack Simulator** | Interactive simulator to trigger SSH brute force, TCP port sweeps, and suspicious processes directly from UI. | ![Attack Simulator](docs/screenshots/One_Click_Attack_Simulator.jpeg) |
 | **5. HDFS NameNode Web UI** | Proves distributed fault-tolerant storage showing **`Live datanodes (2)`** (`worker1-datanode`, `worker2-datanode`). | ![HDFS UI](docs/screenshots/HDFS_Namenode_Web_UI.jpeg) |
 | **6. Spark Master Web UI** | Spark cluster manager showing **2 registered worker nodes** (`worker1-spark`, `worker2-spark`) and streaming execution. | ![Spark UI](docs/screenshots/Spark_Master_Web_UI.jpeg) |
-| **7. HBase Master Web UI** | Distributed NoSQL status showing **2 live RegionServers** and initialized `threatnexus:*` schema tables. | ![HBase UI](docs/screenshots/HBASE_Master_Web_UI.jpeg) |
-| **8. Automated Verification Suite** | Complete automated integration test suite passing **11/11 test cases (100% pass rate)**. | ![Test Verification](docs/screenshots/Automated_Verification_Suite.jpeg) |
+| **7. Spark Worker 1 Web UI** | Worker 1 executor console (`http://localhost:8081`) confirming 2 cores allocated and running streaming executor tasks. | ![Spark Worker 1 UI](docs/screenshots/Spark_Worker_1_web_UI.jpeg) |
+| **8. Spark Worker 2 Web UI** | Worker 2 executor console (`http://localhost:8082`) confirming 2 cores allocated and concurrent streaming execution. | ![Spark Worker 2 UI](docs/screenshots/Spark_Worker_2_Web_UI.jpeg) |
+| **9. HBase Master Web UI** | Distributed NoSQL status showing **2 live RegionServers** and initialized `threatnexus:*` schema tables. | ![HBase UI](docs/screenshots/HBASE_Master_Web_UI.jpeg) |
+| **10. Automated Verification Suite** | Complete automated integration test suite passing **11/11 test cases (100% pass rate)**. | ![Test Verification](docs/screenshots/Automated_Verification_Suite.jpeg) |
 
 ---
 
@@ -579,6 +581,8 @@ ThreatNexus/
 │   │   ├── One_Click_Attack_Simulator.jpeg
 │   │   ├── HDFS_Namenode_Web_UI.jpeg
 │   │   ├── Spark_Master_Web_UI.jpeg
+│   │   ├── Spark_Worker_1_web_UI.jpeg
+│   │   ├── Spark_Worker_2_Web_UI.jpeg
 │   │   ├── HBASE_Master_Web_UI.jpeg
 │   │   └── Automated_Verification_Suite.jpeg
 │   ├── API_CONTRACT.md             # Formal REST API request/response contracts

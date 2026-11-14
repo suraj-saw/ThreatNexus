@@ -40,12 +40,24 @@ Standalone cluster manager interface confirming **2 active worker nodes** (`work
 
 ---
 
-### 7. Apache HBase Master Web UI (`http://localhost:16010`)
+### 7. Apache Spark Worker 1 Web UI (`http://localhost:8081`)
+Direct executor dashboard for Worker 1 (`worker1-spark`) confirming 2 allocated cores, 1.0 GiB memory, and active streaming task execution for the `ThreatNexus-Detection-Engine` application.
+![Spark Worker 1 Web UI](Spark_Worker_1_web_UI.jpeg)
+
+---
+
+### 8. Apache Spark Worker 2 Web UI (`http://localhost:8082`)
+Direct executor dashboard for Worker 2 (`worker2-spark`) confirming 2 allocated cores, 1.0 GiB memory, and concurrent micro-batch task processing alongside Worker 1.
+![Spark Worker 2 Web UI](Spark_Worker_2_Web_UI.jpeg)
+
+---
+
+### 9. Apache HBase Master Web UI (`http://localhost:16010`)
 Distributed NoSQL database interface showing **2 live RegionServers**, active region balance, and the initialized schema tables (`threatnexus:alerts`, `threatnexus:ip_summary`, `threatnexus:system_metrics`).
 ![HBase Master Web UI](HBASE_Master_Web_UI.jpeg)
 
 ---
 
-### 8. Automated Pipeline Verification Suite
+### 10. Automated Pipeline Verification Suite
 Terminal output from running `scripts/test_pipeline.py`, demonstrating that all **11 out of 11 automated test cases passed (100% pass rate)** across API health, Kafka ingestion, detection heuristics, and big data persistence.
 ![Automated Verification Suite](Automated_Verification_Suite.jpeg)
