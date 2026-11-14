@@ -614,7 +614,6 @@ ThreatNexus/
 ├── docker-compose.yml              # Monolithic Compose stack (single-PC dev)
 └── README.md                       # Main project documentation & submission report
 ```
-
 ---
 
 ## 14. Project Demonstration & Verification Walkthrough
