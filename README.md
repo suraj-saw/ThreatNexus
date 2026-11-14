@@ -660,3 +660,28 @@ The following step-by-step walkthrough outlines how to demonstrate and verify th
   python3 scripts/test_pipeline.py --api http://localhost:8000
   ```
   Demonstrates complete end-to-end reliability with all **11/11 tests passing (100%)**.
+
+  ---
+
+## 15. Team Members & Supervision
+
+**Course:** CSBB 422 – Big Data Analytics / Big Data & Distributed Computing  
+**Institution:** National Institute of Technology Delhi  
+**Department:** Department of Computer Science and Engineering  
+**Academic Term:** November 2026  
+
+### Project Group: `ThreatNexus`
+
+| S. No. | Student Name | Roll Number | Email / Contact | Ownership & Module Responsibility |
+| :---: | :--- | :---: | :---: | :--- |
+| **01** | **Souvik Das** | `231210104` | 231210104@nitdelhi.ac.in | **Data Telemetry & Ingestion:** Kafka setup, event schemas, dataset normalization, replay engine (`replay_dataset.py`, `generate_synthetic.py`). |
+| **02** | **Suraj Kumar Saw** | `231210108` | 231210108@nitdelhi.ac.in | **Streaming & Detection Engine:** PySpark Structured Streaming job, sliding-window calculations, watermark management, detection rules engine (`stream_processor.py`). |
+| **03** | **Shubham Kumar** | `231210099` | 231210099@nitdelhi.ac.in | **Distributed Storage Layer:** Hadoop HDFS cluster configuration, replication factor 2, Apache HBase schemas, reverse-timestamp row key indexing, table initializers (`init_tables.sh`). |
+| **04** | **Omprakash Tiwari** | `231210081` | 231210081@nitdelhi.ac.in | **API & SOC Dashboard:** FastAPI async service, dependency health probes, React SOC frontend visualizer, MITRE matrix, interactive attack simulator. |
+
+### Project Supervisor
+
+| Faculty Name | Designation | Department & Institution |
+| :--- | :--- | :--- |
+| **Ms. Kritika Gahlawat** | Assistant Professor | Department of Computer Science and Engineering,<br/>National Institute of Technology Delhi, Narela, Delhi – 110040 |
+
