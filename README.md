@@ -105,14 +105,14 @@ The working system components and visual dashboards are shown below:
 
 | Component | Description | Screenshot Preview |
 | :--- | :--- | :--- |
-| **1. React SOC Dashboard** | Real-time security telemetry, active threat counter, MITRE ATT&CK matrix, and threat velocity sparklines. | ![SOC Dashboard](docs/screenshots/01_soc_dashboard_overview.png) |
-| **2. Live Security Events** | High-velocity streaming log feed received directly from the Kafka `security-events` topic. | ![Live Events Feed](docs/screenshots/02_live_events_stream.png) |
-| **3. Alerts Triage Center** | Detected security incidents with severity filters (`CRITICAL`, `HIGH`, `MEDIUM`), event counts, and status updates. | ![Alerts Triage](docs/screenshots/03_alerts_triage.png) |
-| **4. One-Click Attack Simulator** | Interactive simulator to trigger SSH brute force, TCP port sweeps, and suspicious processes directly from UI. | ![Attack Simulator](docs/screenshots/04_attack_simulator.png) |
-| **5. HDFS NameNode Web UI** | Proves distributed fault-tolerant storage showing `Live datanodes (2)` (`worker1-datanode`, `worker2-datanode`). | ![HDFS UI](docs/screenshots/05_hdfs_namenode_ui.png) |
-| **6. Spark Master Web UI** | Spark cluster manager showing registered worker nodes (`worker1-spark`, `worker2-spark`) and streaming execution. | ![Spark UI](docs/screenshots/06_spark_master_ui.png) |
-| **7. HBase Master Web UI** | Distributed NoSQL status showing 2 live RegionServers and initialized `threatnexus:*` schema tables. | ![HBase UI](docs/screenshots/07_hbase_master_ui.png) |
-| **8. Automated Verification Suite** | Complete Phase 10 test suite passing **11/11 automated end-to-end test cases (100% pass rate)**. | ![Test Verification](docs/screenshots/08_test_pipeline_results.png) |
+| **1. React SOC Dashboard** | Real-time security telemetry, active threat counter, MITRE ATT&CK matrix, and threat velocity sparklines. | ![SOC Dashboard](docs/screenshots/React_SOC_Dashboard.jpeg) |
+| **2. Live Security Events** | High-velocity streaming log feed received directly from the Kafka `security-events` topic. | ![Live Events Feed](docs/screenshots/Live_Security_Events.jpeg) |
+| **3. Alerts Triage Center** | Detected security incidents with severity filters (`CRITICAL`, `HIGH`, `MEDIUM`), event counts, and status updates. | ![Alerts Triage](docs/screenshots/Alerts_Triangle_Center.jpeg) |
+| **4. One-Click Attack Simulator** | Interactive simulator to trigger SSH brute force, TCP port sweeps, and suspicious processes directly from UI. | ![Attack Simulator](docs/screenshots/One_Click_Attack_Simulator.jpeg) |
+| **5. HDFS NameNode Web UI** | Proves distributed fault-tolerant storage showing `Live datanodes (2)` (`worker1-datanode`, `worker2-datanode`). | ![HDFS UI](docs/screenshots/HDFS_Namenode_Web_UI.jpeg) |
+| **6. Spark Master Web UI** | Spark cluster manager showing registered worker nodes (`worker1-spark`, `worker2-spark`) and streaming execution. | ![Spark UI](docs/screenshots/Spark_Master_Web_UI.jpeg) |
+| **7. HBase Master Web UI** | Distributed NoSQL status showing 2 live RegionServers and initialized `threatnexus:*` schema tables. | ![HBase UI](docs/screenshots/HBase_Master_Web_UI.jpeg) |
+| **8. Automated Verification Suite** | Complete Phase 10 test suite passing **11/11 automated end-to-end test cases (100% pass rate)**. | ![Test Verification](docs/screenshots/Automated_verification_Suite.jpeg) |
 
 *(Full-resolution screenshots are stored in [docs/screenshots/](docs/screenshots/README.md).)*
 
