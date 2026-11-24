@@ -394,7 +394,23 @@ WORKER_HOSTNAME=worker2 DATANODE_HTTP_PORT=9865 DATANODE_DATA_PORT=9867 SPARK_WO
 
 ---
 
-#### Terminal 4: Verification & Live Attack Demonstration
+#### Terminal 4: Wait Until the Spark Detection Engine Is Ready
+Start the two workers right after the master: HBase table creation (and therefore the Spark job) waits for the worker RegionServers. Then wait **3–5 minutes** and check that the Spark streaming engine is up **before** sending any attacks:
+
+```bash
+docker compose -p threatnexus-master -f docker-compose.master.yml logs spark-streaming | grep ThreatNexus
+```
+
+The engine is ready when both of these lines appear:
+```
+[ThreatNexus] Kafka topic 'security-events' is available.        (or: Created Kafka topic 'security-events'.)
+[ThreatNexus] Spark Structured Streaming threat detection engine successfully initialized.
+```
+If you only see `Waiting for HBase tables...`, wait another minute and check again.
+
+> **Note:** Alerts are produced by Spark micro-batches over 60-second windows, so a new alert takes **30–60 seconds** to appear in the dashboard after an attack is sent. The event counter updates immediately; the alert counters update after that delay.
+
+#### Terminal 4 (continued): Verification & Live Attack Demonstration
 Run the verification checks from WSL2 bash (or PowerShell):
 
 ```bash
@@ -408,13 +424,35 @@ docker compose -p threatnexus-master -f docker-compose.master.yml exec hbase-mas
 # 3. Stream a synthetic SSH Brute Force attack scenario into the pipeline:
 python3 scripts/replay_dataset.py --scenario brute_force --target http://localhost:8000/api/events
 
-# 4. Run the comprehensive automated test suite (11 test cases):
+# 4. Wait for the Spark micro-batch to produce the alert:
+sleep 60
+
+# 5. Verify the alert was detected (total_alerts > 0, BRUTE_FORCE_001 listed):
+curl -s http://localhost:8000/api/metrics/summary | python3 -m json.tool
+
+# 6. Run the comprehensive automated test suite (11 test cases):
 python3 scripts/test_pipeline.py --api http://localhost:8000
 
-# 5. Verify alerts in HBase and date-partitioned JSON files in HDFS:
+# 7. Verify alerts in HBase and date-partitioned JSON files in HDFS:
 curl -s http://localhost:8000/api/alerts | python3 -m json.tool
 docker compose -p threatnexus-master -f docker-compose.master.yml exec namenode hdfs dfs -ls -R /threatnexus/events
 ```
+
+#### Using the React SOC Dashboard
+Open [http://localhost:3000](http://localhost:3000), go to the **Attack Simulator** tab and click any scenario. Wait **30–60 seconds**: the alert counters and the Alerts Triage list update after the next Spark micro-batch.
+
+#### Troubleshooting: Attacks Sent but No Alerts Appear
+```bash
+# Is the Spark job running, or did it crash / restart? (look for STREAM_FAILED or Exception)
+docker compose -p threatnexus-master -f docker-compose.master.yml logs --tail=80 spark-streaming | grep -E "ThreatNexus|ERROR|Exception|STREAM_FAILED"
+
+# Did Spark process the events? New commit files should appear after each attack:
+docker compose -p threatnexus-master -f docker-compose.master.yml exec namenode hdfs dfs -ls /threatnexus/checkpoints/alerts_v2/commits
+
+# HBase write errors from the Spark executors are logged on the worker containers:
+docker exec threatnexus-worker1-spark-worker-1 bash -c 'grep -h "HBase-Sink" /opt/bitnami/spark/work/*/*/stdout'
+```
+If the Spark job keeps failing after code changes, restart from a clean state with the **Pre-Flight** `down -v` commands above (this resets the HDFS checkpoints).
 
 ---
 
@@ -432,8 +470,13 @@ To run all containers inside a single compose file:
 ```bash
 docker compose up -d --build
 docker compose ps
+
+# Wait 3–5 minutes until the Spark detection engine reports it is ready:
+docker compose logs spark-streaming | grep ThreatNexus
+
 python3 scripts/test_pipeline.py --api http://localhost:8000
 ```
+As in Mode 1, send attacks only after the `successfully initialized` line appears, and allow 30–60 seconds for alerts to show up.
 
 ---
 
@@ -503,7 +546,9 @@ python3 scripts/replay_dataset.py --source csv --input data/cic_ids2017_sample.c
 python3 scripts/replay_dataset.py --scenario normal --rate 2 --loop
 ```
 
-*Tip: All these scenarios can also be triggered with a single click from the **Attack Simulator** tab in the React Dashboard.*
+*Tip: All these scenarios can also be triggered with a single click from the **Attack Simulator** tab in the React Dashboard. Alerts appear 30–60 seconds after a scenario is sent.*
+
+*Note: On startup the Spark engine creates the `security-events` Kafka topic if it does not exist yet, and on its first run it reads the topic from the beginning (`KAFKA_STARTING_OFFSETS=earliest`), so events sent while Spark is still starting are not lost.*
 
 ---
 
@@ -640,7 +685,7 @@ The following step-by-step walkthrough outlines how to demonstrate and verify th
   ```bash
   python3 scripts/replay_dataset.py --scenario brute_force
   ```
-  Monitor the Spark streaming engine as it ingests the micro-batch and triggers alert rule `BRUTE_FORCE_001` within the 30-second sliding window.
+  First confirm the engine is ready (`docker compose -p threatnexus-master -f docker-compose.master.yml logs spark-streaming | grep ThreatNexus` shows `successfully initialized`). Then monitor the Spark streaming engine as it ingests the micro-batch and triggers alert rule `BRUTE_FORCE_001`; the alert appears within 30–60 seconds.
 
 - **Step 5: Distributed Storage Verification (HDFS & HBase)**  
   Confirm data persistence across both storage tiers:
