@@ -13,8 +13,8 @@ services:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     hostname: ${WORKER_HOSTNAME:-worker1}-datanode
     environment:
-      CORE_CONF_fs_defaultFS: hdfs://${NAMENODE_HOST:-namenode}:9000
-      SERVICE_PRECONDITION: "${NAMENODE_HOST:-namenode}:9870"
+      CORE_CONF_fs_defaultFS: hdfs://${NAMENODE_HOST:-${MASTER_IP:-namenode}}:9000
+      SERVICE_PRECONDITION: "${NAMENODE_HOST:-${MASTER_IP:-namenode}}:9870"
       HDFS_CONF_dfs_datanode_data_dir: file:///hadoop/dfs/data
       HDFS_CONF_dfs_datanode_use_datanode_hostname: "true"
       HDFS_CONF_dfs_datanode_hostname: ${WORKER_HOSTNAME:-worker1}-datanode
@@ -36,7 +36,7 @@ services:
     hostname: ${WORKER_HOSTNAME:-worker1}-spark
     environment:
       SPARK_MODE: worker
-      SPARK_MASTER_URL: spark://${SPARK_MASTER_HOST:-spark-master}:7077
+      SPARK_MASTER_URL: spark://${SPARK_MASTER_HOST:-${MASTER_IP:-spark-master}}:7077
       SPARK_LOCAL_HOSTNAME: ${WORKER_HOSTNAME:-worker1}-spark
       SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY:-2G}
       SPARK_WORKER_CORES: ${SPARK_WORKER_CORES:-2}
@@ -62,7 +62,7 @@ services:
         export PATH="/tmp:/usr/local/bin:/usr/bin:/bin:/usr/local/hbase/bin";
         printf '%s\n' '#!/bin/sh' 'echo "$${HOSTNAME}"' > /tmp/hostname;
         chmod +x /tmp/hostname;
-        until /bin/bash -c ": </dev/tcp/${NAMENODE_HOST:-namenode}/9000" && /bin/bash -c ": </dev/tcp/${ZOOKEEPER_HOST:-zookeeper}/2181" && /bin/bash -c ": </dev/tcp/${HBASE_MASTER_HOST:-hbase-master}/16000";
+        until /bin/bash -c ": </dev/tcp/${NAMENODE_HOST:-${MASTER_IP:-namenode}}/9000" && /bin/bash -c ": </dev/tcp/${ZOOKEEPER_HOST:-${MASTER_IP:-zookeeper}}/2181" && /bin/bash -c ": </dev/tcp/${HBASE_MASTER_HOST:-${MASTER_IP:-hbase-master}}/16000";
         do /bin/sleep 3;
         done;
         exec /usr/local/hbase/bin/hbase-daemon.sh --config /usr/local/hbase/conf foreground_start regionserver

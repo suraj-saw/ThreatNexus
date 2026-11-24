@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname ? `http://${window.location.hostname}:8000` : 'http://localhost:8000');
 
 // ==========================================================
 // 1. REUSABLE INTERACTIVE SVG COMPONENTS
@@ -119,6 +119,10 @@ function ThreatGauge({ score = 45, status = 'ELEVATED_THREAT' }) {
   const color =
     clampedScore > 70 ? '#ef4444' : clampedScore > 35 ? '#f59e0b' : '#10b981';
 
+  const dynamicStatus =
+    clampedScore > 70 ? 'CRITICAL THREAT' : clampedScore > 35 ? 'ELEVATED THREAT' : clampedScore > 20 ? 'GUARDED' : 'NORMAL';
+  const effectiveStatus = status && !['ELEVATED_THREAT', 'NORMAL'].includes(status) ? status.replaceAll('_', ' ') : dynamicStatus;
+
   return (
     <div className="threat-gauge-box">
       <div className="gauge-svg-wrap">
@@ -191,7 +195,7 @@ function ThreatGauge({ score = 45, status = 'ELEVATED_THREAT' }) {
           <small>/100</small>
         </span>
         <span className="gauge-badge" style={{ backgroundColor: `${color}22`, color, borderColor: color }}>
-          {status.replaceAll('_', ' ')}
+          {effectiveStatus}
         </span>
       </div>
     </div>
@@ -384,6 +388,30 @@ function App() {
     }
   }
 
+  async function handleResetSimulation() {
+    try {
+      const res = await fetch(`${API_BASE}/api/simulation/reset`, { method: 'POST' });
+      if (res.ok) {
+        setActionMsg('✓ Simulation reset: event buffers and alert stores cleared.');
+        fetchAllData();
+      }
+    } catch (e) {
+      setActionMsg(`Failed to reset: ${e.message}`);
+    }
+  }
+
+  async function handleResolveAll() {
+    try {
+      const res = await fetch(`${API_BASE}/api/alerts/resolve-all`, { method: 'POST' });
+      if (res.ok) {
+        setActionMsg('✓ All active alerts marked as resolved.');
+        fetchAllData();
+      }
+    } catch (e) {
+      setActionMsg(`Failed to resolve all: ${e.message}`);
+    }
+  }
+
   async function handleSendCustomEvent(e) {
     e.preventDefault();
     setLoading(true);
@@ -430,14 +458,51 @@ function App() {
     return true;
   });
 
-  // Calculate Threat Score
+  // Calculate Threat Score dynamically based on active (unresolved) threats
   const threatScore = useMemo(() => {
-    const crit = (metrics.alerts_by_severity?.CRITICAL || 0) * 35;
-    const high = (metrics.alerts_by_severity?.HIGH || 0) * 15;
-    const med = (metrics.alerts_by_severity?.MEDIUM || 0) * 5;
-    const base = crit + high + med;
-    return Math.min(100, Math.max(12, base));
-  }, [metrics]);
+    const activeAlerts = alerts.filter((a) => a.status?.toLowerCase() !== 'resolved');
+
+    if (activeAlerts.length === 0) {
+      return 12; // Nominal baseline when no active threats
+    }
+
+    const openCrit = activeAlerts.filter(
+      (a) => a.severity?.toUpperCase() === 'CRITICAL' && a.status?.toLowerCase() === 'open'
+    ).length;
+    const openHigh = activeAlerts.filter(
+      (a) => a.severity?.toUpperCase() === 'HIGH' && a.status?.toLowerCase() === 'open'
+    ).length;
+    const openMed = activeAlerts.filter(
+      (a) => a.severity?.toUpperCase() === 'MEDIUM' && a.status?.toLowerCase() === 'open'
+    ).length;
+
+    const invCrit = activeAlerts.filter(
+      (a) => a.severity?.toUpperCase() === 'CRITICAL' && a.status?.toLowerCase() === 'investigating'
+    ).length;
+    const invHigh = activeAlerts.filter(
+      (a) => a.severity?.toUpperCase() === 'HIGH' && a.status?.toLowerCase() === 'investigating'
+    ).length;
+    const invMed = activeAlerts.filter(
+      (a) => a.severity?.toUpperCase() === 'MEDIUM' && a.status?.toLowerCase() === 'investigating'
+    ).length;
+
+    // Graduated, responsive score:
+    // Base: 12
+    // Open Critical: +35 each
+    // Open High: +18 each
+    // Open Medium: +8 each
+    // Investigating threats count at half threat weight
+    const raw =
+      12 +
+      openCrit * 35 +
+      openHigh * 18 +
+      openMed * 8 +
+      invCrit * 18 +
+      invHigh * 9 +
+      invMed * 4;
+
+    return Math.min(100, Math.max(12, Math.round(raw)));
+  }, [alerts, metrics]);
 
   // Donut data for Status
   const statusDonutData = useMemo(() => {
@@ -479,10 +544,10 @@ function App() {
 
         <div className="header-controls">
           <div
-            className={`threat-pill ${metrics.system_status === 'NORMAL' ? 'pill-green' : 'pill-red'}`}
+            className={`threat-pill ${threatScore <= 35 ? 'pill-green' : threatScore <= 70 ? 'pill-amber' : 'pill-red'}`}
           >
             <span className="pulse-indicator"></span>
-            DEFCON: {metrics.system_status.replace('_', ' ')}
+            DEFCON: {threatScore > 70 ? 'CRITICAL THREAT' : threatScore > 35 ? 'ELEVATED THREAT' : threatScore > 20 ? 'GUARDED' : 'NORMAL'}
           </div>
 
           <button
@@ -722,9 +787,19 @@ function App() {
                 <h3>🚨 Active Security Alerts</h3>
                 <span className="badge-counter">{alerts.length} Total</span>
               </div>
-              <button className="btn-link" onClick={() => setTab('alerts')}>
-                Open Full Triage Center →
-              </button>
+              <div className="flex-row gap-2 align-center">
+                {alerts.some(a => a.status !== 'resolved') && (
+                  <button className="btn-action-resolve" onClick={handleResolveAll} style={{ padding: '4px 10px', fontSize: '11px', cursor: 'pointer' }} title="Mark all alerts as resolved">
+                    ✓ Resolve All
+                  </button>
+                )}
+                <button className="btn-action-investigate" onClick={handleResetSimulation} style={{ padding: '4px 10px', fontSize: '11px', cursor: 'pointer' }} title="Clear event buffers and alerts">
+                  ↺ Reset State
+                </button>
+                <button className="btn-link" onClick={() => setTab('alerts')}>
+                  Open Full Triage Center →
+                </button>
+              </div>
             </div>
             <div className="table-responsive">
               <table className="soc-table">
