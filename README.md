@@ -313,18 +313,29 @@ exit
 ThreatNexus provides two single-PC execution modes, plus physical multi-node LAN deployment:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        CHOOSE YOUR EXECUTION MODE                      │
-├───────────────────────────────────┬────────────────────────────────────┤
-│ Mode 1: Multi-Terminal Simulation │ Mode 2: Physical Multi-PC Cluster  │
-│ (1 Master + 2 Workers on 1 PC)    │ (3 separate laptops over LAN)      │
-│ ★ RECOMMENDED FOR DEMO            │ For physical multi-PC setup        │
-└───────────────────────────────────┴────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               CHOOSE YOUR EXECUTION MODE                               │
+├───────────────────────────────────┬───────────────────────────────────┬────────────────┤
+│ Mode 0: Single-Click Local Run    │ Mode 1: Multi-Terminal Simulation │ Mode 2: LAN PC │
+│ (Fastest · No Docker Needed)      │ (1 Master + 2 Workers on 1 PC)    │ (3 Laptops)    │
+│ ★ RECOMMENDED FOR INSTANT DEMO    │ (Docker Compose Namespaces)       │ (Physical LAN) │
+└───────────────────────────────────┴───────────────────────────────────┴────────────────┘
 ```
 
 ---
 
-### Mode 1: Single-PC Multi-Terminal Cluster Simulation (Recommended)
+### Mode 0: Single-Click Local Run (Fastest — No Docker Required)
+
+If you only want to run ThreatNexus on **this single computer** without needing Docker Desktop or multiple physical laptops:
+
+1. Double-click **`RUN_LOCAL.cmd`** (or **`RUN_ON_THIS_PC.cmd`**).
+2. It automatically initializes ports, starts the FastAPI analytics backend and React SOC web dashboard, and opens `http://localhost:3000` directly in your browser.
+3. An interactive console menu allows you to inject attack scenarios (SSH Brute Force, Port Scan, Mimikatz), verify the 11-step test suite, and resolve alerts with a single keystroke.
+4. When finished, press **`Q`** to cleanly stop all services.
+
+---
+
+### Mode 1: Single-PC Multi-Terminal Cluster Simulation (Recommended for Docker Cluster Demo)
 
 Simulates the physical 3-node cluster (**1 Master Node + 2 Worker Nodes**) on a single machine across 4 terminal windows using Docker Compose namespaces and isolated port offsets over a shared bridge network (`threatnexus-net`).
 
