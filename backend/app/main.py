@@ -2,6 +2,7 @@ import collections
 import json
 import os
 import socket
+import threading
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -103,6 +104,44 @@ def get_kafka_producer():
             last_err = exc
             time.sleep(2)
     raise RuntimeError(f"Unable to connect to Kafka at {servers}: {last_err}")
+
+
+_offsets_consumer = None
+_offsets_lock = threading.Lock()
+
+
+def kafka_topic_event_total() -> Optional[int]:
+    """Total messages ever written to the events topic (sum of partition end offsets).
+
+    Unlike an in-memory counter this survives API restarts and also counts events
+    published straight to Kafka (e.g. replay_dataset.py --mode kafka).
+    Returns None if Kafka cannot be queried.
+    """
+    global _offsets_consumer
+    from kafka import KafkaConsumer, TopicPartition
+
+    topic = os.getenv("KAFKA_TOPIC", "security-events")
+    with _offsets_lock:
+        try:
+            if _offsets_consumer is None:
+                _offsets_consumer = KafkaConsumer(
+                    bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092"),
+                    request_timeout_ms=5000,
+                    api_version_auto_timeout_ms=3000,
+                )
+            partitions = _offsets_consumer.partitions_for_topic(topic)
+            if not partitions:
+                return 0
+            tps = [TopicPartition(topic, p) for p in partitions]
+            return int(sum(_offsets_consumer.end_offsets(tps).values()))
+        except Exception:
+            if _offsets_consumer is not None:
+                try:
+                    _offsets_consumer.close()
+                except Exception:
+                    pass
+            _offsets_consumer = None
+            return None
 
 
 # ==========================================================
@@ -211,7 +250,7 @@ def get_health():
 def get_metrics_summary():
     """Event totals and alert counts grouped by severity and active rules."""
     try:
-        alerts = scan_hbase_alerts(limit=500)
+        alerts = scan_hbase_alerts(limit=5000)
     except Exception:
         alerts = []
 
@@ -219,25 +258,38 @@ def get_metrics_summary():
     status_counts = {"open": 0, "investigating": 0, "resolved": 0}
     rule_counts = {}
 
+    # Unresolved (open + investigating) alerts drive the live threat level, so resolving
+    # alerts in the triage center lowers the gauge and clears ELEVATED_THREAT.
+    active_severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+
     for a in alerts:
         sev = a.get("severity", "HIGH").upper()
         severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
         st = a.get("status", "open").lower()
         status_counts[st] = status_counts.get(st, 0) + 1
+        if st != "resolved":
+            active_severity_counts[sev] = active_severity_counts.get(sev, 0) + 1
 
         r = a.get("rule_id") or a.get("type", "UNKNOWN")
         rule_counts[r] = rule_counts.get(r, 0) + 1
 
+    kafka_total = kafka_topic_event_total()
+    active_total = sum(active_severity_counts.values())
+
     return {
-        "total_events_ingested": ingest_counter,
+        # Messages in the Kafka topic (all producers, survives API restarts); falls back to
+        # this API process's own counter if Kafka cannot be queried.
+        "total_events_ingested": kafka_total if kafka_total is not None else ingest_counter,
         "recent_events_buffered": len(recent_events_buffer),
         "total_alerts": len(alerts),
+        "active_alerts": active_total,
         "alerts_by_severity": severity_counts,
+        "active_alerts_by_severity": active_severity_counts,
         "alerts_by_status": status_counts,
         "top_triggered_rules": rule_counts,
         "last_ingest_time": last_ingest_time,
-        "system_status": "NORMAL" if severity_counts["CRITICAL"] == 0 else "ELEVATED_THREAT",
+        "system_status": "NORMAL" if active_severity_counts["CRITICAL"] == 0 else "ELEVATED_THREAT",
     }
 
 
@@ -297,24 +349,32 @@ def update_alert_status(
     alert_id: str = Path(..., description="Alert identifier"),
     payload: StatusUpdate = None,
 ):
-    """Update status of an alert (open, investigating, resolved) in HBase."""
+    """Update status of an alert (open, investigating, resolved) in HBase.
+
+    `alert_id` may be the HBase row key (exact row) or the alert_id. Every row with that
+    alert_id is updated, so older duplicate rows sharing an id do not stay unresolved.
+    """
+    if payload is None:
+        raise HTTPException(status_code=422, detail="Request body with 'status' is required.")
     conn = get_hbase_connection()
     try:
         table_name = os.getenv("HBASE_TABLE", "threatnexus:alerts")
         table = conn.table(table_name)
-        matched_key = None
-        for key, row in table.scan():
+        matched_keys = []
+        for key, row in table.scan(columns=[b"details:alert_id"]):
             row_key_str = key.decode(errors="replace")
             extracted_id = row_key_str.split("_", 1)[-1] if "_" in row_key_str else row_key_str
-            if extracted_id == alert_id or row_key_str == alert_id:
-                matched_key = key
-                break
+            stored_id = row.get(b"details:alert_id", b"").decode(errors="replace")
+            if alert_id in (row_key_str, extracted_id, stored_id):
+                matched_keys.append(key)
 
-        if not matched_key:
+        if not matched_keys:
             raise HTTPException(status_code=404, detail=f"Alert '{alert_id}' not found.")
 
-        table.put(matched_key, {b"details:status": payload.status.encode()})
-        return {"alert_id": alert_id, "updated_status": payload.status}
+        with table.batch() as batch:
+            for key in matched_keys:
+                batch.put(key, {b"details:status": payload.status.encode()})
+        return {"alert_id": alert_id, "updated_status": payload.status, "rows_updated": len(matched_keys)}
     finally:
         conn.close()
 
@@ -323,48 +383,55 @@ def update_alert_status(
 def get_top_ips(limit: int = Query(default=10, ge=1, le=100)):
     """Retrieve top source IPs with event frequencies and threat metrics."""
     try:
-        alerts = scan_hbase_alerts(limit=500)
+        alerts = scan_hbase_alerts(limit=5000)
     except Exception:
         alerts = []
+
+    sev_rank = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+
+    def new_entry(ip, last_seen):
+        return {
+            "source_ip": ip,
+            "total_alerts": 0,
+            "active_alerts": 0,
+            "highest_severity": "INFO",
+            "active_highest_severity": "INFO",
+            "last_seen": last_seen,
+            "rules_triggered": set(),
+        }
 
     ip_stats = {}
     for a in alerts:
         ip = a.get("source_ip", "unknown")
         if ip not in ip_stats:
-            ip_stats[ip] = {
-                "source_ip": ip,
-                "total_alerts": 0,
-                "highest_severity": "INFO",
-                "last_seen": a.get("created_at"),
-                "rules_triggered": set(),
-            }
-        ip_stats[ip]["total_alerts"] += 1
-        ip_stats[ip]["rules_triggered"].add(a.get("rule_id") or a.get("type", ""))
+            ip_stats[ip] = new_entry(ip, a.get("created_at"))
+        entry = ip_stats[ip]
+        entry["total_alerts"] += 1
+        entry["rules_triggered"].add(a.get("rule_id") or a.get("type", ""))
 
         sev = a.get("severity", "INFO").upper()
-        if sev == "CRITICAL" or ip_stats[ip]["highest_severity"] != "CRITICAL":
-            if sev in ("HIGH", "CRITICAL") or ip_stats[ip]["highest_severity"] not in ("HIGH", "CRITICAL"):
-                ip_stats[ip]["highest_severity"] = sev
+        if sev_rank.get(sev, 0) > sev_rank.get(entry["highest_severity"], 0):
+            entry["highest_severity"] = sev
+        if a.get("status", "open").lower() != "resolved":
+            entry["active_alerts"] += 1
+            if sev_rank.get(sev, 0) > sev_rank.get(entry["active_highest_severity"], 0):
+                entry["active_highest_severity"] = sev
 
-    # Include recent events buffer count
+    # Include IPs seen in the recent events buffer that have no alerts
     for e in recent_events_buffer:
         ip = e.get("source_ip", "unknown")
         if ip not in ip_stats:
-            ip_stats[ip] = {
-                "source_ip": ip,
-                "total_alerts": 0,
-                "highest_severity": "INFO",
-                "last_seen": e.get("timestamp"),
-                "rules_triggered": set(),
-            }
+            ip_stats[ip] = new_entry(ip, e.get("timestamp"))
 
-    # Format list
+    # Format list. The risk score only counts unresolved alerts, so it drops after triage.
+    sev_mult = {"CRITICAL": 50, "HIGH": 30, "MEDIUM": 15, "LOW": 5, "INFO": 1}
     result = []
     for ip, data in ip_stats.items():
         data["rules_triggered"] = list(data["rules_triggered"])
-        # Threat score calculation
-        sev_mult = {"CRITICAL": 50, "HIGH": 30, "MEDIUM": 15, "LOW": 5, "INFO": 1}
-        score = min(100, data["total_alerts"] * 15 + sev_mult.get(data["highest_severity"], 1))
+        if data["active_alerts"]:
+            score = min(100, data["active_alerts"] * 15 + sev_mult.get(data["active_highest_severity"], 1))
+        else:
+            score = 0
         data["threat_score"] = score
         result.append(data)
 

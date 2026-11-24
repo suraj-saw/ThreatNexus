@@ -60,7 +60,7 @@ def http_req(
         return 0, {"exception": str(e)}
 
 
-def run_tests(api_base: str) -> bool:
+def run_tests(api_base: str, detect_timeout: int = 120) -> bool:
     """Execute end-to-end integration tests against ThreatNexus endpoints."""
     print("=" * 65)
     print(" ThreatNexus End-to-End Pipeline Verification Suite")
@@ -218,6 +218,69 @@ def run_tests(api_base: str) -> bool:
         f"(Buffer contains {len(body.get('events', []))} events)"
     )
 
+    # -------------------------------------------------------------
+    # Test 12: End-to-End Spark Detection (Kafka -> Spark -> HBase -> API)
+    # -------------------------------------------------------------
+    # A fresh source IP per run guarantees the alert comes from this run, not an old one.
+    probe_ip = f"203.0.113.{int(time.time()) % 200 + 20}"
+    probe_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    probe_events = [
+        {
+            "timestamp": probe_ts,
+            "source": "automated-test",
+            "source_ip": probe_ip,
+            "destination_ip": "10.0.0.10",
+            "destination_port": 22,
+            "event_type": "FAILED_LOGIN",
+            "username": "root",
+            "status": "failure",
+            "dataset_label": "synthetic:test_brute_force",
+            "severity": "HIGH",
+            "message": f"Automated detection probe {i + 1}/7",
+        }
+        for i in range(7)
+    ]
+    status, _ = http_req(f"{api_base}/api/events/batch", method="POST", data=probe_events)
+    print(f"{INFO} Waiting up to {detect_timeout}s for Spark to raise BRUTE_FORCE_001 for {probe_ip}...")
+    probe_alert = None
+    deadline = time.time() + detect_timeout
+    while status in (200, 202) and time.time() < deadline:
+        _, body = http_req(f"{api_base}/api/alerts?limit=100&rule_id=BRUTE_FORCE_001&ip={probe_ip}")
+        found = [a for a in body.get("alerts", []) if a.get("source_ip") == probe_ip]
+        if found:
+            probe_alert = found[0]
+            break
+        time.sleep(5)
+    waited = detect_timeout - max(0, int(deadline - time.time()))
+    record_test(
+        "T12: End-to-End Spark Threat Detection",
+        probe_alert is not None,
+        f"(BRUTE_FORCE_001 alert for {probe_ip} after ~{waited}s)" if probe_alert
+        else f"no alert for {probe_ip} within {detect_timeout}s - check the spark-streaming logs",
+    )
+
+    # -------------------------------------------------------------
+    # Test 13: Alert Triage - Resolve lowers the active threat level
+    # -------------------------------------------------------------
+    if probe_alert is not None:
+        _, before = http_req(f"{api_base}/api/metrics/summary")
+        target = probe_alert.get("row_key") or probe_alert.get("alert_id")
+        status, _ = http_req(
+            f"{api_base}/api/alerts/{target}/status", method="PATCH", data={"status": "resolved"}
+        )
+        _, after = http_req(f"{api_base}/api/metrics/summary")
+        _, check = http_req(f"{api_base}/api/alerts?limit=100&ip={probe_ip}")
+        still_open = [a for a in check.get("alerts", []) if a.get("status") != "resolved"]
+        record_test(
+            "T13: Alert Triage Resolve Workflow",
+            status == 200
+            and not still_open
+            and after.get("active_alerts", 0) < before.get("active_alerts", 0),
+            f"(active alerts {before.get('active_alerts')} -> {after.get('active_alerts')})",
+        )
+    else:
+        record_test("T13: Alert Triage Resolve Workflow", False, "skipped: T12 produced no alert")
+
     pct = int(passed_count / total_count * 100) if total_count > 0 else 0
     print("=" * 65)
     print(f" Test Results: {passed_count}/{total_count} Passed ({pct}%)")
@@ -228,8 +291,12 @@ def run_tests(api_base: str) -> bool:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ThreatNexus Pipeline Verification Suite")
     parser.add_argument("--api", default="http://localhost:8000", help="ThreatNexus API base URL")
+    parser.add_argument(
+        "--detect-timeout", type=int, default=120,
+        help="Seconds to wait for Spark to raise the end-to-end detection alert (T12)",
+    )
     cli_args = parser.parse_args()
 
-    test_passed = run_tests(cli_args.api)
+    test_passed = run_tests(cli_args.api, cli_args.detect_timeout)
     sys.exit(0 if test_passed else 1)
 

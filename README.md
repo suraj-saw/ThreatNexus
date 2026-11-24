@@ -185,7 +185,7 @@ The working system components and visual dashboards captured during live cluster
 | **7. Spark Worker 1 Web UI** | Worker 1 executor console (`http://localhost:8081`) confirming 2 cores allocated and running streaming executor tasks. | ![Spark Worker 1 UI](docs/screenshots/Spark_Worker_1_web_UI.jpeg) |
 | **8. Spark Worker 2 Web UI** | Worker 2 executor console (`http://localhost:8082`) confirming 2 cores allocated and concurrent streaming execution. | ![Spark Worker 2 UI](docs/screenshots/Spark_Worker_2_Web_UI.jpeg) |
 | **9. HBase Master Web UI** | Distributed NoSQL status showing **2 live RegionServers** and initialized `threatnexus:*` schema tables. | ![HBase UI](docs/screenshots/HBASE_Master_Web_UI.jpeg) |
-| **10. Automated Verification Suite** | Complete automated integration test suite passing **11/11 test cases (100% pass rate)**. | ![Test Verification](docs/screenshots/Automated_Verification_Suite.jpeg) |
+| **10. Automated Verification Suite** | Automated integration test suite passing every test case (screenshot taken with the earlier 11-test version; the suite now has 13 tests, including end-to-end detection). | ![Test Verification](docs/screenshots/Automated_Verification_Suite.jpeg) |
 
 ---
 
@@ -430,7 +430,7 @@ sleep 60
 # 5. Verify the alert was detected (total_alerts > 0, BRUTE_FORCE_001 listed):
 curl -s http://localhost:8000/api/metrics/summary | python3 -m json.tool
 
-# 6. Run the comprehensive automated test suite (11 test cases):
+# 6. Run the comprehensive automated test suite (13 test cases, incl. end-to-end detection):
 python3 scripts/test_pipeline.py --api http://localhost:8000
 
 # 7. Verify alerts in HBase and date-partitioned JSON files in HDFS:
@@ -515,8 +515,11 @@ python3 scripts/test_pipeline.py --api http://localhost:8000
 [PASS] T9: Alerts Query & Filter API Contract (Retrieved 2 alerts)
 [PASS] T10: Top IPs Intelligence API Contract (Retrieved 4 profiled IPs)
 [PASS] T11: Recent Events Live Stream Buffer (Buffer contains 20 events)
+[INFO] Waiting up to 120s for Spark to raise BRUTE_FORCE_001 for 203.0.113.154...
+[PASS] T12: End-to-End Spark Threat Detection (BRUTE_FORCE_001 alert for 203.0.113.154 after ~6s)
+[PASS] T13: Alert Triage Resolve Workflow (active alerts 4 -> 3)
 =================================================================
- Test Results: 11/11 Passed (100%)
+ Test Results: 13/13 Passed (100%)
 =================================================================
 ```
 
@@ -567,13 +570,14 @@ python3 scripts/replay_dataset.py --scenario normal --rate 2 --loop
 
 ### Apache HBase NoSQL Schemas
 1. **`threatnexus:alerts`**
-   - **Row Key Design:** `{rev_ts}_{alert_id}` where `rev_ts = 9999999999999 - unix_timestamp_ms`. This reverse-timestamp prefix guarantees that simple table scans return newest alerts first with zero index overhead.
+   - **Row Key Design:** `{rev_ts}_{alert_id}` where `rev_ts = 9999999999999 - window_start_unix_ms` (event time). This reverse-timestamp prefix guarantees that simple table scans return newest alerts first with zero index overhead, and the key is deterministic, so a retried Spark micro-batch overwrites its rows instead of duplicating them.
+   - **One row per incident:** detector outputs for the same `rule_id` + `source_ip` whose time ranges overlap (the two overlapping 60s sliding windows, update-mode re-emissions as a window's count grows, and per-event instant rules within 60s) are merged into a single alert row. If new attack events arrive for a resolved incident, it is re-opened.
    - **Column Family `details:`**
-     `alert_id`, `rule_id`, `severity`, `type`, `source_ip`, `description`, `event_count`, `window_start`, `window_end`, `status`, `created_at`
+     `alert_id`, `rule_id`, `severity`, `type`, `source_ip`, `description`, `event_count`, `window_start`, `window_end`, `window_start_ms`, `window_end_ms`, `status`, `created_at`, `updated_at`
 2. **`threatnexus:ip_summary`**
    - **Row Key Design:** `{source_ip}_{YYYY-MM-DD}`
    - **Column Family `stats:`**
-     `last_seen`, `last_alert`, `severity`, `event_count`, `failed_logins`
+     `last_seen`, `last_alert`, `severity`, `event_count`, `failed_logins`, `incident_{rule_id}` (row key and end time of the current incident, used for de-duplication)
 3. **`threatnexus:system_metrics`**
    - **Row Key Design:** `{metric_name}_{time_bucket}`
    - **Column Family `value:`**
@@ -648,7 +652,7 @@ ThreatNexus/
 ├── scripts/                        # Automation & Testing Tools
 │   ├── generate_synthetic.py       # Attack generator (brute force, scan, spikes)
 │   ├── replay_dataset.py           # Kafka/HTTP dataset streaming replay tool
-│   └── test_pipeline.py            # Automated end-to-end 11-step verification suite
+│   └── test_pipeline.py            # Automated end-to-end 13-step verification suite
 ├── spark/                          # Apache Spark Streaming Engine
 │   ├── stream_processor.py         # PySpark Structured Streaming threat engine
 │   └── Dockerfile
@@ -703,7 +707,7 @@ The following step-by-step walkthrough outlines how to demonstrate and verify th
   ```bash
   python3 scripts/test_pipeline.py --api http://localhost:8000
   ```
-  Demonstrates complete end-to-end reliability with all **11/11 tests passing (100%)**.
+  Demonstrates complete end-to-end reliability with all **13/13 tests passing (100%)**. T12 sends a brute-force attack from a fresh IP and waits for Spark's alert, so the suite fails if detection is broken.
 
 ---
   

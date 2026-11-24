@@ -86,7 +86,7 @@ flowchart TD
 
 ### Apache HBase Table Schema
 1. **`threatnexus:alerts`**
-   - **Row Key:** `{rev_ts}_{alert_id}` (where `rev_ts = 9999999999999 - unix_ms`)
+   - **Row Key:** `{rev_ts}_{alert_id}` (where `rev_ts = 9999999999999 - window_start_unix_ms`; one row per incident, see README section 11)
    - **Column Family `details:`**
      `alert_id`, `rule_id`, `severity`, `type`, `source_ip`, `description`, `event_count`, `window_start`, `window_end`, `status`, `created_at`
 2. **`threatnexus:ip_summary`**

@@ -156,6 +156,8 @@ rule_failed_logins = (
         F.col("count").cast("int").alias("event_count"),
         F.col("window.start").cast("string").alias("window_start"),
         F.col("window.end").cast("string").alias("window_end"),
+        (F.col("window.start").cast("long") * 1000).alias("window_start_ms"),
+        (F.col("window.end").cast("long") * 1000).alias("window_end_ms"),
         F.concat(F.lit("Repeated failed logins detected: "), F.col("count").cast("string"), F.lit(" attempts within 60s")).alias("description"),
         F.lit("open").alias("status"),
         F.current_timestamp().cast("string").alias("created_at")
@@ -189,6 +191,8 @@ rule_port_scan = (
         F.col("nports").cast("int").alias("event_count"),
         F.col("window.start").cast("string").alias("window_start"),
         F.col("window.end").cast("string").alias("window_end"),
+        (F.col("window.start").cast("long") * 1000).alias("window_start_ms"),
+        (F.col("window.end").cast("long") * 1000).alias("window_end_ms"),
         F.concat(F.lit("Horizontal port sweep: "), F.col("nports").cast("string"), F.lit(" distinct ports scanned")).alias("description"),
         F.lit("open").alias("status"),
         F.current_timestamp().cast("string").alias("created_at")
@@ -218,6 +222,8 @@ rule_traffic_spike = (
         F.col("count").cast("int").alias("event_count"),
         F.col("window.start").cast("string").alias("window_start"),
         F.col("window.end").cast("string").alias("window_end"),
+        (F.col("window.start").cast("long") * 1000).alias("window_start_ms"),
+        (F.col("window.end").cast("long") * 1000).alias("window_end_ms"),
         F.concat(F.lit("Abnormal traffic surge: "), F.col("count").cast("string"), F.lit(" events in 60s")).alias("description"),
         F.lit("open").alias("status"),
         F.current_timestamp().cast("string").alias("created_at")
@@ -246,6 +252,8 @@ rule_suspicious_proc = (
         F.lit(1).alias("event_count"),
         F.col("timestamp").alias("window_start"),
         F.col("timestamp").alias("window_end"),
+        (F.col("event_time").cast("long") * 1000).alias("window_start_ms"),
+        (F.col("event_time").cast("long") * 1000).alias("window_end_ms"),
         F.concat(F.lit("Unauthorized security tool executed: "), F.col("process_name")).alias("description"),
         F.lit("open").alias("status"),
         F.current_timestamp().cast("string").alias("created_at")
@@ -280,6 +288,8 @@ rule_dataset_label = (
         F.lit(1).alias("event_count"),
         F.col("timestamp").alias("window_start"),
         F.col("timestamp").alias("window_end"),
+        (F.col("event_time").cast("long") * 1000).alias("window_start_ms"),
+        (F.col("event_time").cast("long") * 1000).alias("window_end_ms"),
         F.concat(F.lit("Labelled dataset attack record: "), F.col("dataset_label")).alias("description"),
         F.lit("open").alias("status"),
         F.current_timestamp().cast("string").alias("created_at")
@@ -300,16 +310,38 @@ all_alerts = (
 # ==========================================================
 # 10. HBASE SINK
 # ==========================================================
+# Rules evaluated per event (no window): each matching event is one occurrence.
+INSTANT_RULES = {"SUSPICIOUS_PROC_005", "CIC_DATASET_ATTACK_006"}
+# Instant-rule occurrences from the same IP closer than this are merged into one incident.
+INSTANT_MERGE_GAP_MS = 60_000
+
+
 def save_alerts_to_hbase(df, batch_id):
+    """Persist alerts to HBase as de-duplicated incidents.
+
+    A burst of attack events produces several detector outputs: it falls into two
+    overlapping 60s sliding windows, update mode re-emits a window each time its count
+    grows, and instant rules fire once per event. Writing each output as a new row made
+    one attack show up as many alerts, kept the threat gauge pinned at 100, and made
+    "Resolve" appear broken (duplicate rows share an alert_id). Instead, outputs for the
+    same (rule, source_ip) whose time ranges overlap or touch are merged into a single
+    incident row. A merge only happens when new attack events arrived, so a resolved
+    incident that receives new events is re-opened.
+    """
     if df.rdd.isEmpty():
         return
 
     def write_partition(rows):
         import happybase
+        from datetime import datetime, timezone
+
         hbase_host = os.getenv("HBASE_HOST", "hbase")
         hbase_port = int(os.getenv("HBASE_THRIFT_PORT", "9090"))
         hbase_table = os.getenv("HBASE_TABLE", "threatnexus:alerts")
         ip_table_name = os.getenv("HBASE_IP_TABLE", "threatnexus:ip_summary")
+
+        def b(value):
+            return str(value).encode()
 
         conn = None
         try:
@@ -318,46 +350,85 @@ def save_alerts_to_hbase(df, batch_id):
             alert_tbl = conn.table(hbase_table)
             ip_tbl = conn.table(ip_table_name) if ip_table_name.encode() in conn.tables() else None
 
-            with alert_tbl.batch() as alert_batch:
-                for row in rows:
-                    item = row.asDict()
-                    # Reverse timestamp row key: 9999999999999 - unix_ms
-                    now_ms = int(time.time() * 1000)
-                    rev_ts = 9999999999999 - now_ms
-                    alert_id = str(item.get("alert_id", ""))
-                    row_key = f"{rev_ts:013d}_{alert_id}".encode()
+            for row in rows:
+                item = row.asDict()
+                rule_id = str(item.get("rule_id", ""))
+                src_ip = str(item.get("source_ip", ""))
+                alert_id = str(item.get("alert_id", ""))
+                start_ms = int(item.get("window_start_ms") or time.time() * 1000)
+                end_ms = int(item.get("window_end_ms") or start_ms)
+                count = int(item.get("event_count") or 1)
+                instant = rule_id in INSTANT_RULES
+                now_str = str(item.get("created_at", ""))
 
+                # Incident index lives in ip_summary: row {ip}_{date}, column stats:incident_{rule}
+                day = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+                ip_row_key = f"{src_ip}_{day}".encode()
+                index_col = f"stats:incident_{rule_id}".encode()
+
+                prev = None
+                if ip_tbl is not None:
+                    raw = ip_tbl.row(ip_row_key, columns=[index_col]).get(index_col)
+                    if raw:
+                        prev_key, prev_end = raw.decode().rsplit("|", 1)
+                        prev = (prev_key.encode(), int(prev_end))
+
+                merge_gap = INSTANT_MERGE_GAP_MS if instant else 0
+                existing = None
+                if prev is not None and start_ms <= prev[1] + merge_gap:
+                    existing = alert_tbl.row(prev[0])
+
+                if existing:
+                    # Same incident: update it in place instead of adding a duplicate row.
+                    row_key = prev[0]
+                    old_count = int(existing.get(b"details:event_count", b"1") or 1)
+                    new_count = old_count + count if instant else max(old_count, count)
+                    new_end = max(prev[1], end_ms)
                     values = {
-                        b"details:alert_id": alert_id.encode(),
-                        b"details:rule_id": str(item.get("rule_id", "")).encode(),
-                        b"details:severity": str(item.get("severity", "INFO")).encode(),
-                        b"details:type": str(item.get("alert_type", "")).encode(),
-                        b"details:source_ip": str(item.get("source_ip", "")).encode(),
-                        b"details:description": str(item.get("description", "")).encode(),
-                        b"details:event_count": str(item.get("event_count", 1)).encode(),
-                        b"details:window_start": str(item.get("window_start", "")).encode(),
-                        b"details:window_end": str(item.get("window_end", "")).encode(),
-                        b"details:status": str(item.get("status", "open")).encode(),
-                        b"details:created_at": str(item.get("created_at", "")).encode(),
+                        b"details:event_count": b(new_count),
+                        b"details:window_end_ms": b(new_end),
+                        b"details:updated_at": b(now_str),
                     }
-                    alert_batch.put(row_key, values)
+                    if end_ms >= prev[1]:
+                        values[b"details:window_end"] = b(item.get("window_end", ""))
+                    if instant:
+                        values[b"details:description"] = existing.get(b"details:description", b"").split(b" (x")[0] + f" (x{new_count})".encode()
+                    elif count >= old_count:
+                        values[b"details:description"] = b(item.get("description", ""))
+                    if existing.get(b"details:status", b"open") == b"resolved":
+                        values[b"details:status"] = b"open"  # new attack events after resolution
+                    alert_tbl.put(row_key, values)
+                else:
+                    # New incident. Row key = reverse event-time + alert_id: newest-first scans,
+                    # and deterministic, so a retried micro-batch overwrites instead of duplicating.
+                    row_key = f"{9999999999999 - start_ms:013d}_{alert_id}".encode()
+                    new_end = end_ms
+                    values = {
+                        b"details:alert_id": b(alert_id),
+                        b"details:rule_id": b(rule_id),
+                        b"details:severity": b(item.get("severity", "INFO")),
+                        b"details:type": b(item.get("alert_type", "")),
+                        b"details:source_ip": b(src_ip),
+                        b"details:description": b(item.get("description", "")),
+                        b"details:event_count": b(count),
+                        b"details:window_start": b(item.get("window_start", "")),
+                        b"details:window_end": b(item.get("window_end", "")),
+                        b"details:window_start_ms": b(start_ms),
+                        b"details:window_end_ms": b(end_ms),
+                        b"details:created_at": b(now_str),
+                        b"details:updated_at": b(now_str),
+                    }
+                    if not alert_tbl.row(row_key, columns=[b"details:status"]):
+                        values[b"details:status"] = b"open"
+                    alert_tbl.put(row_key, values)
 
-                    # Update IP summary in threatnexus:ip_summary
-                    if ip_tbl:
-                        try:
-                            src_ip = str(item.get("source_ip", ""))
-                            today = time.strftime("%Y-%m-%d")
-                            ip_row_key = f"{src_ip}_{today}".encode()
-                            ip_tbl.put(
-                                ip_row_key,
-                                {
-                                    b"stats:last_seen": str(item.get("created_at", "")).encode(),
-                                    b"stats:last_alert": str(item.get("alert_type", "")).encode(),
-                                    b"stats:severity": str(item.get("severity", "")).encode(),
-                                }
-                            )
-                        except Exception:
-                            pass
+                if ip_tbl is not None:
+                    ip_tbl.put(ip_row_key, {
+                        index_col: row_key + b"|" + b(new_end),
+                        b"stats:last_seen": b(now_str),
+                        b"stats:last_alert": b(item.get("alert_type", "")),
+                        b"stats:severity": b(item.get("severity", "")),
+                    })
         except Exception as exc:
             # Re-raise so Spark fails and retries this micro-batch from the checkpoint,
             # instead of silently dropping the alerts (e.g. while HBase is still starting).
@@ -367,7 +438,13 @@ def save_alerts_to_hbase(df, batch_id):
             if conn is not None:
                 conn.close()
 
-    df.foreachPartition(write_partition)
+    # All outputs of one (rule, IP) go to the same partition, in time order, so incident
+    # merging is never raced by another executor; different keys still write in parallel.
+    (
+        df.repartition("rule_id", "source_ip")
+        .sortWithinPartitions("window_start_ms")
+        .foreachPartition(write_partition)
+    )
 
 
 # Start Streaming Query 1: Alerts to HBase

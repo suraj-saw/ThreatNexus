@@ -56,9 +56,17 @@ Returns high-level platform KPIs for the dashboard overview.
   "total_events_ingested": 145,
   "recent_events_buffered": 82,
   "total_alerts": 8,
+  "active_alerts": 7,
   "alerts_by_severity": {
     "CRITICAL": 1,
     "HIGH": 5,
+    "MEDIUM": 2,
+    "LOW": 0,
+    "INFO": 0
+  },
+  "active_alerts_by_severity": {
+    "CRITICAL": 1,
+    "HIGH": 4,
     "MEDIUM": 2,
     "LOW": 0,
     "INFO": 0
@@ -78,6 +86,9 @@ Returns high-level platform KPIs for the dashboard overview.
 }
 ```
 
+- `total_events_ingested`: messages in the Kafka `security-events` topic (sum of partition end offsets), so it survives API restarts and includes events published directly to Kafka.
+- `active_alerts` / `active_alerts_by_severity`: unresolved (`open` + `investigating`) alerts only. The dashboard threat gauge and `system_status` are based on these, so resolving alerts lowers the threat level.
+
 ---
 
 ### 3. `GET /api/alerts`
@@ -96,6 +107,7 @@ Query parameters:
   "alerts": [
     {
       "id": "alert-bruteforce-7c9e1a4f02b8",
+      "row_key": "8204454039999_alert-bruteforce-7c9e1a4f02b8",
       "alert_id": "alert-bruteforce-7c9e1a4f02b8",
       "rule_id": "BRUTE_FORCE_001",
       "severity": "HIGH",
@@ -112,7 +124,7 @@ Query parameters:
 ---
 
 ### 4. `PATCH /api/alerts/{alert_id}/status`
-Update triage lifecycle stage in HBase.
+Update triage lifecycle stage in HBase. `{alert_id}` may be the alert's `row_key` (updates exactly that row) or its `alert_id` (updates every row with that id).
 
 **Request Body:**
 ```json
@@ -125,7 +137,8 @@ Update triage lifecycle stage in HBase.
 ```json
 {
   "alert_id": "alert-bruteforce-7c9e1a4f02b8",
-  "updated_status": "investigating"
+  "updated_status": "investigating",
+  "rows_updated": 1
 }
 ```
 

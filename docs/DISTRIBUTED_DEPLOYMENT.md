@@ -148,7 +148,7 @@ docker compose -p threatnexus-master -f docker-compose.master.yml exec hbase-mas
 # 3. Replay attack scenario (SSH Brute Force)
 python3 scripts/replay_dataset.py --scenario brute_force --target http://localhost:8000/api/events
 
-# 4. Run automated end-to-end verification suite (11 test cases)
+# 4. Run automated end-to-end verification suite (13 test cases)
 python3 scripts/test_pipeline.py --api http://localhost:8000
 
 # 5. Verify persisted alerts in HBase and raw partitions in HDFS

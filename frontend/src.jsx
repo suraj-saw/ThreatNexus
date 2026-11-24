@@ -375,7 +375,10 @@ function App() {
       if (res.ok) {
         setActionMsg(`Alert updated to [${newStatus.toUpperCase()}]`);
         fetchAllData();
-        if (selectedAlert && (selectedAlert.alert_id === alertId || selectedAlert.id === alertId)) {
+        if (
+          selectedAlert &&
+          (selectedAlert.row_key === alertId || selectedAlert.alert_id === alertId || selectedAlert.id === alertId)
+        ) {
           setSelectedAlert({ ...selectedAlert, status: newStatus });
         }
       }
@@ -430,13 +433,17 @@ function App() {
     return true;
   });
 
+  // Severity counts of unresolved (open + investigating) alerts. Resolved alerts no longer
+  // raise the threat level, so triaging alerts brings the gauge back down.
+  const activeSeverity = metrics.active_alerts_by_severity || metrics.alerts_by_severity || {};
+
   // Calculate Threat Score
   const threatScore = useMemo(() => {
-    const crit = (metrics.alerts_by_severity?.CRITICAL || 0) * 35;
-    const high = (metrics.alerts_by_severity?.HIGH || 0) * 15;
-    const med = (metrics.alerts_by_severity?.MEDIUM || 0) * 5;
-    const base = crit + high + med;
-    return Math.min(100, Math.max(12, base));
+    const crit = (activeSeverity.CRITICAL || 0) * 35;
+    const high = (activeSeverity.HIGH || 0) * 15;
+    const med = (activeSeverity.MEDIUM || 0) * 5;
+    const low = (activeSeverity.LOW || 0) * 2;
+    return Math.min(100, crit + high + med + low);
   }, [metrics]);
 
   // Donut data for Status
@@ -537,7 +544,9 @@ function App() {
           onClick={() => setTab('alerts')}
         >
           <span className="tab-icon">🚨</span> Alerts Triage
-          <span className="tab-pill pill-alert">{alerts.length}</span>
+          <span className="tab-pill pill-alert" title="Unresolved alerts">
+            {alerts.filter((a) => a.status !== 'resolved').length}
+          </span>
         </button>
         <button
           className={tab === 'ip_analysis' ? 'tab-btn active' : 'tab-btn'}
@@ -602,8 +611,7 @@ function App() {
                 <span className="hud-chip chip-red">PRIORITY</span>
               </div>
               <div className="hud-stat text-red">
-                {(metrics.alerts_by_severity?.CRITICAL || 0) +
-                  (metrics.alerts_by_severity?.HIGH || 0)}
+                {(activeSeverity.CRITICAL || 0) + (activeSeverity.HIGH || 0)}
               </div>
               <div className="hud-footer">
                 <span>Requires SOC Triage</span>
@@ -741,7 +749,7 @@ function App() {
                 </thead>
                 <tbody>
                   {alerts.slice(0, 6).map((a, i) => (
-                    <tr key={a.id || i} onClick={() => setSelectedAlert(a)} className="clickable-row">
+                    <tr key={a.row_key || a.id || i} onClick={() => setSelectedAlert(a)} className="clickable-row">
                       <td className="code-font text-cyan">{a.alert_id || a.id}</td>
                       <td>
                         <span className="badge-rule">{a.rule_id || a.type}</span>
@@ -930,7 +938,7 @@ function App() {
                 </thead>
                 <tbody>
                   {filteredAlerts.map((a, idx) => (
-                    <tr key={a.id || idx}>
+                    <tr key={a.row_key || a.id || idx}>
                       <td
                         className="code-font text-cyan cursor-pointer"
                         onClick={() => setSelectedAlert(a)}
@@ -964,7 +972,7 @@ function App() {
                           {a.status !== 'investigating' && (
                             <button
                               className="btn-action-investigate"
-                              onClick={() => updateAlertStatus(a.alert_id || a.id, 'investigating')}
+                              onClick={() => updateAlertStatus(a.row_key || a.alert_id || a.id, 'investigating')}
                               title="Mark as Investigating"
                             >
                               Investigate
@@ -973,7 +981,7 @@ function App() {
                           {a.status !== 'resolved' && (
                             <button
                               className="btn-action-resolve"
-                              onClick={() => updateAlertStatus(a.alert_id || a.id, 'resolved')}
+                              onClick={() => updateAlertStatus(a.row_key || a.alert_id || a.id, 'resolved')}
                               title="Resolve Alert"
                             >
                               Resolve
@@ -1694,21 +1702,21 @@ function App() {
                 <div className="flex-row gap-2 mt-2">
                   <button
                     className="btn-triage btn-triage-open"
-                    onClick={() => updateAlertStatus(selectedAlert.alert_id || selectedAlert.id, 'open')}
+                    onClick={() => updateAlertStatus(selectedAlert.row_key || selectedAlert.alert_id || selectedAlert.id, 'open')}
                   >
                     Mark as OPEN
                   </button>
                   <button
                     className="btn-triage btn-triage-investigate"
                     onClick={() =>
-                      updateAlertStatus(selectedAlert.alert_id || selectedAlert.id, 'investigating')
+                      updateAlertStatus(selectedAlert.row_key || selectedAlert.alert_id || selectedAlert.id, 'investigating')
                     }
                   >
                     Mark as INVESTIGATING
                   </button>
                   <button
                     className="btn-triage btn-triage-resolve"
-                    onClick={() => updateAlertStatus(selectedAlert.alert_id || selectedAlert.id, 'resolved')}
+                    onClick={() => updateAlertStatus(selectedAlert.row_key || selectedAlert.alert_id || selectedAlert.id, 'resolved')}
                   >
                     Mark as RESOLVED ✓
                   </button>
