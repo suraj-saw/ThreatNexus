@@ -63,7 +63,7 @@ for /L %%I in (1,1,15) do (
     curl.exe --fail --silent http://localhost:8000/health >nul 2>&1
     if not errorlevel 1 goto :master_ready
     echo Waiting for API, Kafka, and HBase... attempt %%I/15
-    timeout /t 5 /nobreak >nul
+    ping 127.0.0.1 -n 6 >nul
 )
 
 :master_ready

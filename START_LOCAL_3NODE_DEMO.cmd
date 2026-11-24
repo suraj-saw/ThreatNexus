@@ -13,20 +13,20 @@ echo.
 cd /d "%~dp0"
 
 echo [1/4] Spawning Window 1: MASTER NODE (FastAPI + React SOC Dashboard)...
-start "ThreatNexus - [MASTER NODE]" cmd /k "title ThreatNexus - [MASTER NODE] && color 0B && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+start "ThreatNexus - [MASTER NODE]" cmd /k "cd /d \"%~dp0\" && title ThreatNexus - [MASTER NODE] && color 0B && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
 
 echo [2/4] Spawning Window 2: WORKER NODE 1 (HDFS DataNode 1 + Spark Worker 1)...
-start "ThreatNexus - [WORKER NODE 1]" cmd /k "title ThreatNexus - [WORKER NODE 1] && color 0A && python scripts\simulate_worker.py --worker worker1 --cores 2 --memory 2G"
+start "ThreatNexus - [WORKER NODE 1]" cmd /k "cd /d \"%~dp0\" && title ThreatNexus - [WORKER NODE 1] && color 0A && python scripts\simulate_worker.py --worker worker1 --cores 2 --memory 2G"
 
 echo [3/4] Spawning Window 3: WORKER NODE 2 (HDFS DataNode 2 + Spark Worker 2)...
-start "ThreatNexus - [WORKER NODE 2]" cmd /k "title ThreatNexus - [WORKER NODE 2] && color 0E && python scripts\simulate_worker.py --worker worker2 --cores 2 --memory 2G"
+start "ThreatNexus - [WORKER NODE 2]" cmd /k "cd /d \"%~dp0\" && title ThreatNexus - [WORKER NODE 2] && color 0E && python scripts\simulate_worker.py --worker worker2 --cores 2 --memory 2G"
 
 echo [4/4] Starting React SOC Frontend Dashboard (Port 3000)...
-start "ThreatNexus - [VITE FRONTEND]" cmd /k "title ThreatNexus - [REACT SOC DASHBOARD] && color 0D && npm --prefix frontend run dev"
+start "ThreatNexus - [VITE FRONTEND]" cmd /k "cd /d \"%~dp0\" && title ThreatNexus - [REACT SOC DASHBOARD] && color 0D && call npm --prefix frontend run dev"
 
 echo.
 echo Waiting 5 seconds for services to initialize...
-timeout /t 5 /nobreak >nul
+ping 127.0.0.1 -n 6 >nul
 
 echo Opening React SOC Web Dashboard in browser...
 start http://localhost:3000
