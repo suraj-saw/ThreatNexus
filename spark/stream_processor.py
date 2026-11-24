@@ -56,13 +56,54 @@ schema = T.StructType([
 # ==========================================================
 kafka_broker = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 kafka_topic = os.getenv("KAFKA_TOPIC", "security-events")
+# Only used on the very first run (no checkpoint yet). "earliest" makes sure events
+# published while Spark was still starting up are not silently skipped.
+kafka_starting_offsets = os.getenv("KAFKA_STARTING_OFFSETS", "earliest")
+
+
+def ensure_kafka_topic(bootstrap_servers, topic, attempts=30, delay_s=5):
+    """Create the Kafka topic if it does not exist yet.
+
+    Kafka only auto-creates a topic when the first message is produced. If Spark
+    subscribes before that, the query dies with UnknownTopicOrPartitionException,
+    and every event sent while it restarts is lost. Uses the kafka-clients jar that
+    spark-sql-kafka already puts on the driver classpath.
+    """
+    jvm = spark.sparkContext._jvm
+    for attempt in range(1, attempts + 1):
+        admin = None
+        try:
+            props = jvm.java.util.Properties()
+            props.put("bootstrap.servers", bootstrap_servers)
+            admin = jvm.org.apache.kafka.clients.admin.AdminClient.create(props)
+            if topic in set(admin.listTopics().names().get()):
+                print(f"[ThreatNexus] Kafka topic '{topic}' is available.")
+                return
+            new_topic = jvm.org.apache.kafka.clients.admin.NewTopic(
+                topic, jvm.java.util.Optional.empty(), jvm.java.util.Optional.empty()
+            )
+            admin.createTopics(jvm.java.util.Collections.singletonList(new_topic)).all().get()
+            print(f"[ThreatNexus] Created Kafka topic '{topic}'.")
+            return
+        except Exception as exc:
+            if "TopicExistsException" in str(exc):
+                return
+            print(f"[ThreatNexus] Waiting for Kafka topic '{topic}' (attempt {attempt}/{attempts}): {exc}")
+            time.sleep(delay_s)
+        finally:
+            if admin is not None:
+                admin.close()
+    raise RuntimeError(f"Kafka topic '{topic}' unavailable at {bootstrap_servers}")
+
+
+ensure_kafka_topic(kafka_broker, kafka_topic)
 
 raw_stream = (
     spark.readStream
     .format("kafka")
     .option("kafka.bootstrap.servers", kafka_broker)
     .option("subscribe", kafka_topic)
-    .option("startingOffsets", "latest")
+    .option("startingOffsets", kafka_starting_offsets)
     .option("failOnDataLoss", "false")
     .load()
 )
@@ -318,7 +359,10 @@ def save_alerts_to_hbase(df, batch_id):
                         except Exception:
                             pass
         except Exception as exc:
+            # Re-raise so Spark fails and retries this micro-batch from the checkpoint,
+            # instead of silently dropping the alerts (e.g. while HBase is still starting).
             print(f"[Spark-HBase-Sink] Error writing batch to HBase: {exc}")
+            raise
         finally:
             if conn is not None:
                 conn.close()

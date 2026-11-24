@@ -223,12 +223,13 @@ services:
     volumes:
       - ./spark:/opt/threatnexus/spark
     command:
-      - /opt/bitnami/spark/bin/spark-submit
-      - --master
-      - spark://spark-master:7077
-      - --packages
-      - org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3
-      - /opt/threatnexus/spark/stream_processor.py
+      - /bin/bash
+      - -c
+      - >-
+        until /opt/bitnami/python/bin/python -c "import happybase,sys; c=happybase.Connection('hbase',9090,timeout=3000); sys.exit(0 if b'threatnexus:alerts' in c.tables() else 1)";
+        do echo "[ThreatNexus] Waiting for HBase tables..."; sleep 5;
+        done;
+        exec /opt/bitnami/spark/bin/spark-submit --master spark://spark-master:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3 /opt/threatnexus/spark/stream_processor.py
     restart: unless-stopped
 
   # ---------------- FASTAPI BACKEND ----------------
