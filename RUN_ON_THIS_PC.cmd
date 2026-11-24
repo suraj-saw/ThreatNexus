@@ -33,7 +33,7 @@ echo [OK] Python and Node.js are available.
 :: 2. Ensure frontend packages are installed
 echo.
 echo [2/5] Checking frontend dependencies...
-if not exist "frontend\node_modules\" (
+if not exist "frontend\node_modules" (
     echo Installing React dependencies [one-time setup, please wait]...
     call npm --prefix frontend install
     if errorlevel 1 (
@@ -54,10 +54,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -Lo
 echo.
 echo [4/5] Starting ThreatNexus services...
 echo Starting FastAPI Analytics Backend on port 8000...
-start "ThreatNexus-Backend" /min cmd /k "cd /d \"%~dp0\" && title ThreatNexus-Backend && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+start "ThreatNexus-Backend" cmd /k "title ThreatNexus-Backend && color 0A && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
 
 echo Starting React SOC Web Dashboard on port 3000...
-start "ThreatNexus-Frontend" /min cmd /k "cd /d \"%~dp0\" && title ThreatNexus-Frontend && call npm --prefix frontend run dev"
+start "ThreatNexus-Frontend" cmd /k "title ThreatNexus-Frontend && color 0D && call npm --prefix frontend run dev"
 
 :: 5. Probe API Readiness
 echo.
